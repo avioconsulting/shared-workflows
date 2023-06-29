@@ -1,5 +1,5 @@
-# shared-workflows
-A repository to store the Github Actions workflows
+# Github Actions - Shared Workflows
+A repository to store the Github Actions shared workflows
 
 ## Adding workflows to a new project
 
@@ -56,13 +56,13 @@ on:
 
 jobs:
   Build-Maven:
-    uses: kkingavio/shared-artiffacts/.github/workflows/maven-build.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/maven-build.yml@main
     with:
       include-mule-ee-repo: true
 
   Release-Maven:
     needs: Build-Maven
-    uses: kkingavio/shared-artiffacts/.github/workflows/maven-release.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/maven-release.yml@main
     with:
       app-version: ${{ needs.Build-Maven.outputs.app-version }}
       publish-maven-central: true
