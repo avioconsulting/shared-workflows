@@ -1,0 +1,79 @@
+name: Maven Build Workflow
+
+on:
+  workflow_call:
+    inputs:
+      include-mule-ee-repo:
+        description: Adds the Mule EE repo to settings.xml
+        required: false
+        type: boolean
+        default: false
+      java-distribution:
+        description: The Java Distribution to use, default 'adopt-hotspot'
+        required: false
+        type: string
+        default: adopt-hotspot
+      java-version:
+        description: The Java Version to use, default '8'
+        required: false
+        type: string
+        default: 8
+      include-test-results:
+        description: A flag to run publish-unit-test-result
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      app-version:
+        description: The application version
+        value: ${{ jobs.Build-With-Maven.outputs.version }}
+jobs:
+  Build-With-Maven:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+          submodules: 'recursive'
+
+      - name: Set up JDK 1.8 for build and unit test with Mule EE
+        uses: actions/setup-java@v3
+        if: ${{ inputs.include-mule-ee-repo }}
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+          cache: maven
+          server-id: mulesoft-ee-releases
+          server-username: MULE_EE_USERNAME
+          server-password: MULE_EE_PASSWORD
+
+      - name: Set up JDK 1.8 for build and unit test
+        uses: actions/setup-java@v3
+        if: ${{ !inputs.include-mule-ee-repo }}
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+          cache: maven
+
+      - name: Set Version
+        id: set-version
+        run: echo version=$(./mvnw -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
+
+      - name: Print Version
+        run: echo "Version ${{ steps.set-version.outputs.version }}"
+
+      - name: Compile
+        run: ./mvnw compile
+
+      - name: Verify
+        run: ./mvnw --batch-mode verify
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: ${{ inputs.include-test-results }}
+        with:
+          files: |
+            target/surefire-reports/*.xml
