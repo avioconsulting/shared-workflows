@@ -70,7 +70,35 @@ jobs:
 
 ### Gradle Java Build
 
-TODO
+```yaml
+name: Gradle Build and Release
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'chore/**'
+      - 'feat/**'
+  pull_request:
+    branches:
+      - 'main'
+
+jobs:
+  Build-Gradle:
+    uses: avioconsulting/shared-workflows/.github/workflows/gradle-build.yml@main
+
+  Release-Gradle:
+    needs: Build-Gradle
+    uses: avioconsulting/shared-workflows/.github/workflows/gradle-release.yml@main
+    with:
+      app-version: ${{ needs.Build-Gradle.outputs.app-version }}
+
+  Post-Release-Gradle:
+    needs: [Build-Gradle, Release-Gradle]
+    uses: avioconsulting/shared-workflows/.github/workflows/gradle-post-release.yml@main
+    with:
+      app-version: ${{ needs.Release-Gradle.outputs.app-version }}
+```
 
 ## Shared Workflow Details
 
@@ -120,12 +148,44 @@ TODO
 
 ### `gradle-build.yml`
 
-TODO
+* Runs on any branches defined by the project build.yml, which should include `main`, `chore/*`, `feat/*`
+* Executes initial setup, then `.mvnw compile`, `.mvn verify` and then publishes the unit test results
+
+| Variable               | Description                                | Type    | Required | Default       | Input/Output |
+|------------------------|--------------------------------------------|---------|----------|---------------|--------------|
+| `java-distribution`    | The Java Distribution to use               | string  | false    | adopt-hotspot | input        |
+| `java-version`         | The Java Version to use                    | string  | false    | 8             | input        |
+| `include-test-results` | A flag to run publish-unit-test-result     | boolean | false    | true          | input        |
+| `gradle-opts`          | Gradle options to include with maven calls | string  | false    | n/a           | input        |
+| `app-version`          | The application version                    | string  | n/a      | n/a           | output       |
+
 
 ### `gradle-release.yml`
 
-TODO
+* Only runs on the `main` branch
+* Executes initial setup, then runs JReleaser, and captures the JReleaser output.
+
+| Variable            | Description                                                              | Type    | Required | Default         | Input/Output |
+|---------------------|--------------------------------------------------------------------------|---------|----------|-----------------|--------------|
+| `app-version`       | Application version to release                                           | string  | true     | n/a             | input        |
+| `java-distribution` | The Java Distribution to use                                             | string  | false    | adopt-hotspot   | input        |
+| `java-version`      | The Java Version to use                                                  | string  | false    | 8               | input        |
+| `main-branch`       | Main branch reference, allows override for repos that still use ‘master’ | string  | false    | refs/heads/main | input        |
+| `gradle-opts`       | Gradle options to include with maven calls                               | string  | false    | n/a             | input        |
+| `app-version`       | The application version                                                  | string  | n/a      | n/a             | output       |
+
 
 ### `gradle-post-release.yml`
 
-TODO
+* Only runs on `main` branch, if the `app-version` does not include 'SNAPSHOT'
+* Executes initial setup, increments the pom version, then creates a pull request for the version changes
+
+| Variable          | Description                                                              | Type   | Required | Default                           | Input/Output |
+|-------------------|--------------------------------------------------------------------------|--------|----------|-----------------------------------|--------------|
+| app-version       | Application version to release                                           | string | true     | n/a                               | input        |
+| java-distribution | The Java Distribution to use                                             | string | false    | adopt-hotspot                     | input        |
+| java-version      | The Java Version to use                                                  | string | false    | 8                                 | input        |
+| main-branch       | Main branch reference, allows override for repos that still use ‘master’ | string | false    | refs/heads/main                   | input        |
+| pr-reviewers      | Users to be included in the post-release pull request                    | string | false    | adesjardin, manikmagar, kkingavio | input        |
+| app-version       | The new application version                                              | string | n/a      | n/a                               | output       |
+
