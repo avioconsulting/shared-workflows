@@ -22,7 +22,11 @@ on:
         description: A flag to run publish-unit-test-result
         required: false
         type: boolean
-        default: false
+        default: true
+      maven-opts:
+        description: Maven options to include with maven calls
+        required: false
+        type: string
     outputs:
       app-version:
         description: The application version
@@ -47,8 +51,8 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven
           server-id: mulesoft-ee-releases
-          server-username: MULE_EE_USERNAME
-          server-password: MULE_EE_PASSWORD
+          server-username: ${{ secrets.MULE_EE_USERNAME }}
+          server-password: ${{ secrets.MULE_EE_PASSWORD }}
 
       - name: Set up JDK 1.8 for build and unit test
         uses: actions/setup-java@v3
@@ -66,10 +70,10 @@ jobs:
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Compile
-        run: ./mvnw compile
+        run: ./mvnw compile ${{ inputs.maven-opts }}
 
       - name: Verify
-        run: ./mvnw --batch-mode verify
+        run: ./mvnw --batch-mode verify ${{ inputs.maven-opts }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

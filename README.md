@@ -79,26 +79,29 @@ TODO
 * Runs on any branches defined by the project build.yml, which should include `main`, `chore/*`, `feat/*`
 * Executes initial setup, then `.mvnw compile`, `.mvn verify` and then publishes the unit test results
 
-| Variable             | Description                                                                                     | Type    | Required | Default       | Input/Output |
-|----------------------|-------------------------------------------------------------------------------------------------|---------|----------|---------------|--------------|
+| Variable               | Description                                                                                     | Type    | Required | Default       | Input/Output |
+|------------------------|-------------------------------------------------------------------------------------------------|---------|----------|---------------|--------------|
 | `include-mule-ee-repo` | Adds the Mule EE repo to settings.xml for java setup.  This is needed for mule plugin projects. | boolean | false    | false         | input        |
 | `java-distribution`    | The Java Distribution to use                                                                    | string  | false    | adopt-hotspot | input        |
 | `java-version`         | The Java Version to use                                                                         | string  | false    | 8             | input        |
 | `include-test-results` | A flag to run publish-unit-test-result                                                          | boolean | false    | true          | input        |
+| `maven-opts`           | Maven options to include with maven calls                                                       | string  | false    | n/a           | input        |
 | `app-version`          | The application version                                                                         | string  | n/a      | n/a           | output       |
+
 
 ### `maven-release.yml`
 
 * Only runs on the `main` branch
 * Executes initial setup, then runs JReleaser, and captures the JReleaser output. Optionally it will release the artifact to maven central
 
-| Variable              | Description                                                              | Type    | Required | Default         | Input/Output |
-|-----------------------|--------------------------------------------------------------------------|---------|----------|-----------------|--------------|
-| `app-version`          | Application version to release                                           | string  | true     | n/a             | input        |
+| Variable                | Description                                                              | Type    | Required | Default         | Input/Output |
+|-------------------------|--------------------------------------------------------------------------|---------|----------|-----------------|--------------|
+| `app-version`           | Application version to release                                           | string  | true     | n/a             | input        |
 | `publish-maven-central` | Publish artifact to maven central, enable this for mule-plugins          | boolean | false    | false           | input        |
-| `java-distribution`    | The Java Distribution to use                                             | string  | false    | adopt-hotspot   | input        |
-| `java-version`         | The Java Version to use                                                  | string  | false    | 8               | input        |
+| `java-distribution`     | The Java Distribution to use                                             | string  | false    | adopt-hotspot   | input        |
+| `java-version`          | The Java Version to use                                                  | string  | false    | 8               | input        |
 | `main-branch`           | Main branch reference, allows override for repos that still use ‘master’ | string  | false    | refs/heads/main | input        |
+| `maven-opts`            | Maven options to include with maven calls                                | string  | false    | n/a             | input        |
 | `app-version`           | The application version                                                  | string  | n/a      | n/a             | output       |
 
 ### `maven-post-release.yml`
