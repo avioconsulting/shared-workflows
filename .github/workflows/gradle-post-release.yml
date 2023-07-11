@@ -1,4 +1,4 @@
-name: Maven Post Release Workflow
+name: Gradle Post Release Workflow
 
 on:
   workflow_call:
@@ -35,11 +35,12 @@ on:
 env:
   main-branch-ref: refs/heads/${{ inputs.main-branch }}
   is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+  is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
 
 jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
-    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && env.is-check-into-main }}
+    if: ${{ !env.is-snapshot && env.is-check-into-main }}
 
     steps:
       - uses: actions/checkout@v3
@@ -47,7 +48,7 @@ jobs:
           fetch-depth: '0'
           submodules: 'recursive'
 
-      - name: Set up JDK 1.8
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: ${{ inputs.java-distribution }}
@@ -62,9 +63,7 @@ jobs:
       # The second adds in a project reference -> ./gradlew version-project:properties
       - name: Set New Version Variable
         id: set-new-version
-        run: ${{ env.VERSION_PROJECT == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ env.VERSION_PROJECT }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
-        env:
-          VERSION_PROJECT: ${{ inputs.version-project }}
+        run: ${{ inputs.version-project == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ inputs.version-project }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4

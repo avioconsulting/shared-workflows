@@ -31,11 +31,12 @@ on:
 env:
   main-branch-ref: refs/heads/${{ inputs.main-branch }}
   is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+  is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
 
 jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
-    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && env.is-check-into-main }}
+    if: ${{ !env.is-snapshot && env.is-check-into-main }}
     steps:
       - uses: actions/checkout@v3
         with:

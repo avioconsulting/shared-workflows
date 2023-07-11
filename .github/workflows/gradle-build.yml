@@ -51,9 +51,7 @@ jobs:
       # The second adds in a project reference -> ./gradlew version-project:properties
       - name: Set Version
         id: set-version
-        run: ${{ env.VERSION_PROJECT == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ env.VERSION_PROJECT }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
-        env:
-          VERSION_PROJECT: ${{ inputs.version-project }}
+        run: ${{ inputs.version-project == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ inputs.version-project }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
