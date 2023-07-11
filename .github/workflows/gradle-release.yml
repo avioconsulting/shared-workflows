@@ -17,18 +17,23 @@ on:
         required: false
         type: string
         default: 8
-      gradle-opts:
-        description: Gradle options to include with gradle calls
+      gradle-args:
+        description: Gradle arguments appended to gradle calls
         required: false
         type: string
       main-branch:
-        description: Main branch reference
+        description: Main branch name
         required: false
         type: string
-        default: refs/heads/main
+        default: main
+
+env:
+  main-branch-ref: refs/heads/${{ inputs.main-branch }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
 
 jobs:
-  Publish:
+  Release:
+    if: ${{ is-check-into-main }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -39,18 +44,14 @@ jobs:
       - name: Set up JDK
         uses: actions/setup-java@v3
         with:
-          # Not sure why the distro was set to 'temurin'
-          # distribution: 'temurin'
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
       - name: Stage Deployment
-        if: ${{ github.event_name != 'pull_request' && github.ref == inputs.main-branch }}
-        run: ./gradlew publish ${{ inputs.gradle-opts }}
+        run: ./gradlew publish ${{ inputs.gradle-args }}
 
       - name: JReleaser full-Release
-        if: ${{ github.event_name != 'pull_request' && github.ref == inputs.main-branch }}
         uses: jreleaser/release-action@v2
         env:
           JRELEASER_PROJECT_VERSION: ${{ inputs.app-version }}
@@ -66,7 +67,6 @@ jobs:
           arguments: full-release
 
       - name: JReleaser release output
-        if: ${{ github.event_name != 'pull_request' && github.ref == inputs.main-branch }}
         uses: actions/upload-artifact@v3
         with:
           name: jreleaser-release

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       app-version:
-        description: Application version to release
+        description: Application version that was released
         required: true
         type: string
       java-distribution:
@@ -18,32 +18,31 @@ on:
         type: string
         default: 8
       main-branch:
-        description: Main branch reference
+        description: Main branch name
         required: false
         type: string
-        default: refs/heads/main
+        default: main
       pr-reviewers:
         description: Users to be included on the post-release pull request
         required: false
         type: string
         default: adesjardin, manikmagar, kkingavio
-    outputs:
-      app-version:
-        description: The application version
-        value: ${{ jobs.Build-With-Maven.outputs.version }}
+
+env:
+  main-branch-ref: refs/heads/${{ inputs.main-branch }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
 
 jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
-    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && github.ref == inputs.main-branch }}
-
+    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && env.is-check-into-main }}
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: '0'
           submodules: 'recursive'
 
-      - name: Set up JDK 1.8
+      - name: Set up JDK
         uses: actions/setup-java@v3
         with:
           distribution: ${{ inputs.java-distribution }}

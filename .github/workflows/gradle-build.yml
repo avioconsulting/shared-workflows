@@ -18,8 +18,12 @@ on:
         required: false
         type: boolean
         default: true
-      gradle-opts:
-        description: Gradle options to include with gradle calls
+      gradle-args:
+        description: Gradle arguments appended to gradle calls
+        required: false
+        type: string
+      version-project:
+        description: For use with multi-module projects, this is used to determine application version
         required: false
         type: string
     outputs:
@@ -38,25 +42,27 @@ jobs:
 
       - uses: actions/setup-java@v3
         with:
-          # Not sure why the distro was set to 'temurin'
-          # distribution: 'temurin'
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
-      ## Will need to find a way to get the version... this one references mule-linter-core.... not sure if that's needed?
+      # This uses a conditional to build 2 different echo commands
+      # The first is for just a regular -> ./gradlew properties call
+      # The second adds in a project reference -> ./gradlew version-project:properties
       - name: Set Version
         id: set-version
-        run: echo "version=$(./gradlew mule-linter-core:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: ${{ env.VERSION_PROJECT == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ env.VERSION_PROJECT }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
+        env:
+          VERSION_PROJECT: ${{ inputs.version-project }}
 
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Compile
-        run: ./gradlew assemble ${{ inputs.gradle-opts }}
+        run: ./gradlew assemble ${{ inputs.gradle-args }}
 
       - name: Verify
-        run: ./gradlew check  ${{ inputs.gradle-opts }}
+        run: ./gradlew check ${{ inputs.gradle-args }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2

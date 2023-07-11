@@ -23,8 +23,8 @@ on:
         required: false
         type: boolean
         default: true
-      maven-opts:
-        description: Maven options to include with maven calls
+      maven-args:
+        description: Maven arguments appended to maven calls
         required: false
         type: string
     outputs:
@@ -43,7 +43,7 @@ jobs:
           fetch-depth: '0'
           submodules: 'recursive'
 
-      - name: Set up JDK 1.8 for build and unit test with Mule EE
+      - name: Set up JDK for build and unit test with Mule EE
         uses: actions/setup-java@v3
         if: ${{ inputs.include-mule-ee-repo }}
         with:
@@ -54,7 +54,7 @@ jobs:
           server-username: ${{ secrets.MULE_EE_USERNAME }}
           server-password: ${{ secrets.MULE_EE_PASSWORD }}
 
-      - name: Set up JDK 1.8 for build and unit test
+      - name: Set up JDK for build and unit test
         uses: actions/setup-java@v3
         if: ${{ !inputs.include-mule-ee-repo }}
         with:
@@ -70,10 +70,10 @@ jobs:
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Compile
-        run: ./mvnw compile ${{ inputs.maven-opts }}
+        run: ./mvnw compile ${{ inputs.maven-args }}
 
       - name: Verify
-        run: ./mvnw --batch-mode verify ${{ inputs.maven-opts }}
+        run: ./mvnw --batch-mode verify ${{ inputs.maven-args }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
