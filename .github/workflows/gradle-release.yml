@@ -1,0 +1,75 @@
+name: Gradle Release Workflow
+
+on:
+  workflow_call:
+    inputs:
+      app-version:
+        description: Application version to release
+        required: true
+        type: string
+      java-distribution:
+        description: The Java Distribution to use, default 'adopt-hotspot'
+        required: false
+        type: string
+        default: adopt-hotspot
+      java-version:
+        description: The Java Version to use, default '8'
+        required: false
+        type: string
+        default: 8
+      gradle-args:
+        description: Gradle arguments appended to gradle calls
+        required: false
+        type: string
+      main-branch:
+        description: Main branch name
+        required: false
+        type: string
+        default: main
+
+env:
+  main-branch-ref: refs/heads/${{ inputs.main-branch }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+
+jobs:
+  Release:
+    if: ${{ is-check-into-main }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+          submodules: 'recursive'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+          cache: 'gradle'
+
+      - name: Stage Deployment
+        run: ./gradlew publish ${{ inputs.gradle-args }}
+
+      - name: JReleaser full-Release
+        uses: jreleaser/release-action@v2
+        env:
+          JRELEASER_PROJECT_VERSION: ${{ inputs.app-version }}
+          JRELEASER_GITHUB_TOKEN: ${{ secrets.GIT_TOKEN }}
+          JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
+          JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
+          JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
+          JRELEASER_NEXUS2_MAVEN_CENTRAL_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          JRELEASER_NEXUS2_MAVEN_CENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          JRELEASER_VERSION: 1.6.0
+        with:
+          version: ${{ env.JRELEASER_VERSION }}
+          arguments: full-release
+
+      - name: JReleaser release output
+        uses: actions/upload-artifact@v3
+        with:
+          name: jreleaser-release
+          path: |
+            out/jreleaser/trace.log
+            out/jreleaser/output.properties

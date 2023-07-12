@@ -1,0 +1,69 @@
+name: Maven Post Release Workflow
+
+on:
+  workflow_call:
+    inputs:
+      app-version:
+        description: Application version that was released
+        required: true
+        type: string
+      java-distribution:
+        description: The Java Distribution to use, default 'adopt-hotspot'
+        required: false
+        type: string
+        default: adopt-hotspot
+      java-version:
+        description: The Java Version to use, default '8'
+        required: false
+        type: string
+        default: 8
+      main-branch:
+        description: Main branch name
+        required: false
+        type: string
+        default: main
+      pr-reviewers:
+        description: Users to be included on the post-release pull request
+        required: false
+        type: string
+        default: adesjardin, manikmagar, kkingavio
+
+env:
+  main-branch-ref: refs/heads/${{ inputs.main-branch }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+  is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
+
+jobs:
+  Prepare-Next-Snapshot:
+    runs-on: ubuntu-latest
+    if: ${{ !env.is-snapshot && env.is-check-into-main }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: '0'
+          submodules: 'recursive'
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: ${{ inputs.java-distribution }}
+          java-version: ${{ inputs.java-version }}
+          cache: maven
+
+      - name: Increment Version
+        run: |
+          ./mvnw clean build-helper:parse-version versions:set -DnewVersion=\${parsedVersion.majorVersion}.\${parsedVersion.minorVersion}.\${parsedVersion.nextIncrementalVersion}-SNAPSHOT -DprocessAllModules versions:commit
+
+      - name: Set New Version Variable
+        id: set-new-version
+        run: echo version=$(./mvnw -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v4
+        with:
+          branch: "chore/v${{ steps.set-new-version.outputs.version }}"
+          commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
+          title: "chore: Auto increment to v${{ steps.set-new-version.outputs.version }}"
+          delete-branch: true
+          assignees: ${{ github.actor }}
+          reviewers: ${{ inputs.pr-reviewers }}
