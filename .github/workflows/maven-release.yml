@@ -32,12 +32,9 @@ on:
         type: string
         default: main
 
-env:
-  IS_COMMIT_TO_MAIN: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
-
 jobs:
   Release:
-    if: ${{ env.IS_COMMIT_TO_MAIN }}
+    if: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
