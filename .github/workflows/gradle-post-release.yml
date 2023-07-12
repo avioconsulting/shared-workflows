@@ -34,7 +34,7 @@ on:
 
 env:
   main-branch-ref: refs/heads/${{ inputs.main-branch }}
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == env.main-branch-ref }}
   is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
 
 jobs:
