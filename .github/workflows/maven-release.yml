@@ -33,11 +33,11 @@ on:
         default: main
 
 env:
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
+  IS_COMMIT_TO_MAIN: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
 
 jobs:
   Release:
-    if: ${{ env.is-check-into-main }}
+    if: ${{ env.IS_COMMIT_TO_MAIN }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
