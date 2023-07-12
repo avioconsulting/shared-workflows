@@ -34,11 +34,11 @@ on:
 
 env:
   main-branch-ref: refs/heads/${{ inputs.main-branch }}
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == main-branch-ref }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == env.main-branch-ref }}
 
 jobs:
   Release:
-    if: ${{ is-check-into-main }}
+    if: ${{ env.is-check-into-main }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
