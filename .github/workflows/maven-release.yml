@@ -33,8 +33,7 @@ on:
         default: main
 
 env:
-  main-branch-ref: refs/heads/${{ inputs.main-branch }}
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == env.main-branch-ref }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
 
 jobs:
   Release:
