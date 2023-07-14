@@ -31,9 +31,13 @@ on:
         required: false
         type: string
         default: main
+        
+env:
+  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
 
 jobs:
   Release:
+    # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     if: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
     runs-on: ubuntu-latest
     steps:

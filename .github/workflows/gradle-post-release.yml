@@ -33,15 +33,14 @@ on:
         default: adesjardin, manikmagar, kkingavio
 
 env:
-  main-branch-ref: refs/heads/${{ inputs.main-branch }}
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == env.main-branch-ref }}
+  is-check-into-main: ${{ github.event_name != 'pull_request' && format('refs/head/{0}',inputs.main-branch)  }}
   is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
 
 jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
-    if: ${{ !env.is-snapshot && env.is-check-into-main }}
-
+    # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
+    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
     steps:
       - uses: actions/checkout@v3
         with:
