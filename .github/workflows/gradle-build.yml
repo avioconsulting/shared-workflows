@@ -7,7 +7,7 @@ on:
         description: The Java Distribution to use, default 'adopt-hotspot'
         required: false
         type: string
-        default: adopt-hotspot
+        default: temurin
       java-version:
         description: The Java Version to use, default '8'
         required: false
@@ -59,7 +59,7 @@ jobs:
       - name: Compile
         run: ./gradlew assemble ${{ inputs.gradle-args }}
 
-      - name: Verify
+      - name: Check
         run: ./gradlew check ${{ inputs.gradle-args }}
 
       - name: Publish Test Results

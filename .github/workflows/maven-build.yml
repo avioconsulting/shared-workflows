@@ -12,7 +12,7 @@ on:
         description: The Java Distribution to use, default 'adopt-hotspot'
         required: false
         type: string
-        default: adopt-hotspot
+        default: temurin
       java-version:
         description: The Java Version to use, default '8'
         required: false
