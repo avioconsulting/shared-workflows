@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       java-distribution:
-        description: The Java Distribution to use, default 'adopt-hotspot'
+        description: The Java Distribution to use, default 'temurin'
         required: false
         type: string
         default: temurin

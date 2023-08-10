@@ -4,14 +4,14 @@ on:
   workflow_call:
     inputs:
       java-distribution:
-        description: The Java Distribution to use, default 'adopt-hotspot'
+        description: The Java Distribution to use, default 'temurin'
         required: false
         type: string
         default: temurin
       java-version:
         description: The Java Version to use, default '8'
         required: false
-        type: int
+        type: string
         default: 8
       include-test-results:
         description: A flag to run publish-unit-test-result
