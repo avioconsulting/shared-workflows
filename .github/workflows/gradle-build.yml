@@ -51,7 +51,7 @@ jobs:
 
       - name: Set Maven Home
         id: set-maven-home
-        run: echo "maven-home=$(mvn -v | grep "Maven home" | sed -e "s/^Maven home\:\s//")" >> $GITHUB_OUTPUT
+        run: echo "maven-home=$(mvn -v | grep "Maven home" | sed -e "s/^Maven home\:\ //")" >> $GITHUB_OUTPUT
 
       - name: Print Maven Home
         run: echo "Maven Home ${{steps.set-maven-home.outputs.maven-home}}"
