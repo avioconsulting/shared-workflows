@@ -49,6 +49,13 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: 'gradle'
 
+      - name: Set Maven Home
+        id: set-maven-home
+        run: echo "maven-home=$(mvn -v | grep "Maven home" | sed -e "s/^Maven home\:\s//")" >> $GITHUB_OUTPUT
+
+      - name: Print Maven Home
+        run: echo "Maven Home ${{steps.set-maven-home.outputs.maven-home}}"
+
       # This uses a conditional to build 2 different echo commands
       # The first is for just a regular -> ./gradlew properties call
       # The second adds in a project reference -> ./gradlew version-project:properties
@@ -61,9 +68,13 @@ jobs:
 
       - name: Compile
         run: ./gradlew assemble ${{ inputs.gradle-args }}
+        env:
+          MAVEN_HOME: ${{steps.set-maven-home.outputs.maven-home}}
 
       - name: Check
         run: ./gradlew check ${{ inputs.gradle-args }}
+        env:
+          MAVEN_HOME: ${{steps.set-maven-home.outputs.maven-home}}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
