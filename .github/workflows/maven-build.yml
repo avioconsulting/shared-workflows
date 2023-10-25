@@ -85,8 +85,10 @@ jobs:
           files: |
             target/surefire-reports/*.xml
 
-      - name: Upload Build Artifacts (JARs only)
+      - name: Upload Build Artifacts (JARs and Maven Staging Repo)
         uses: actions/upload-artifact@v3
         with:
-          path: target/*.jar
           name: build-artifacts
+          path: |
+            target/*.jar
+            target/staging-deploy
