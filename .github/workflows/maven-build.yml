@@ -27,6 +27,11 @@ on:
         description: Maven arguments appended to maven calls
         required: false
         type: string
+      stage-maven-artifacts:
+        description: Set to true if you need to stage Maven artifacts for JReleaser publishing during release
+        required: false
+        type: boolean
+        default: false
     outputs:
       app-version:
         description: The application version
@@ -77,6 +82,10 @@ jobs:
 
       - name: Verify
         run: ./mvnw --batch-mode verify ${{ inputs.maven-args }}
+
+      - name: Stage Maven Artifacts
+        if: ${{ inputs.stage-maven-artifacts }}
+        run: ./mvnw -P release deploy -DskipTests=true ${{ inputs.maven-args }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
