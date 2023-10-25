@@ -81,3 +81,9 @@ jobs:
         with:
           files: |
             target/surefire-reports/*.xml
+
+      - name: Upload Build Artifacts (JARs only)
+        uses: actions/upload-artifact@v3
+        with:
+          path: target/*.jar
+          name: build-artifacts

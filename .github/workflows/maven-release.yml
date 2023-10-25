@@ -46,6 +46,14 @@ jobs:
           fetch-depth: '0'
           submodules: 'recursive'
 
+      - name: Download Build Artifacts (JARs only)
+        uses: actions/download-artifact@v3
+        with:
+          name: build-artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R
+
       - name: Set up JDK for maven central publish
         uses: actions/setup-java@v3
         with:
