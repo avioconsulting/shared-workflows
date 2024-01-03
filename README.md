@@ -180,6 +180,18 @@ jobs:
 | `main-branch`           | Main branch name, allows override for repos that still use ‘master’ | string  | false    | main          | input        |
 | `maven-args`            | Maven arguments appended to maven calls                             | string  | false    | n/a           | input        |
 
+Maven release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
+
+- GIT_TOKEN
+- JRELEASER_GPG_PASSPHRASE
+- JRELEASER_GPG_PUBLIC_KEY
+- JRELEASER_GPG_SECRET_KEY
+- MAVEN_GPG_PASSPHRASE
+- MAVEN_GPG_PRIVATE_KEY
+- OSSRH_PASSWORD
+- OSSRH_USERNAME
+- MULE_EE_PASSWORD (if Mule EE is needed)
+- MULE_EE_USERNAME (if Mule EE is needed)
 
 ### `maven-post-release.yml`
 
@@ -223,6 +235,16 @@ jobs:
 | `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main          | input        |
 | `gradle-args`       | Gradle arguments appended to gradle calls                           | string | false    | n/a           | input        |
 
+Gradle release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
+
+- GIT_TOKEN
+- JRELEASER_GPG_PASSPHRASE
+- JRELEASER_GPG_PUBLIC_KEY
+- JRELEASER_GPG_SECRET_KEY
+- MAVEN_GPG_PASSPHRASE
+- MAVEN_GPG_PRIVATE_KEY
+- OSSRH_PASSWORD
+- OSSRH_USERNAME
 
 ### `gradle-post-release.yml`
 
