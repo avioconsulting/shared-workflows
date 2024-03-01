@@ -188,10 +188,58 @@ Maven release workflow requires the following [Organization Secrets](https://git
 - JRELEASER_GPG_SECRET_KEY
 - MAVEN_GPG_PASSPHRASE
 - MAVEN_GPG_PRIVATE_KEY
-- OSSRH_PASSWORD
-- OSSRH_USERNAME
 - MULE_EE_PASSWORD (if Mule EE is needed)
 - MULE_EE_USERNAME (if Mule EE is needed)
+
+Depending on the target maven deployment repository, configure the target repository secrets and maven POM.
+
+**NOTE: Do not set both sets of secrets on a repository, build may fail.**
+
+If you are using [avio-mule-modules-parent](https://github.com/avioconsulting/avio-mule-modules-parent), check its documentation for how to configure Maven POM.
+
+#### Deploying to Maven Central
+
+Assign following secrets to the target repository -
+- OSSRH_PASSWORD
+- OSSRH_USERNAME
+
+Distribution Management section - 
+
+```xml
+    <distributionManagement>
+        <repository>
+            <id>ossrh</id>
+            <url>${nexus.url}/service/local/staging/deploy/maven2/</url>
+        </repository>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>${nexus.url}/content/repositories/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
+```
+
+### Deploying to AVIO's JFrog Artifactory
+
+Assign following Secrets to the target repository -
+- MAVEN_PUBLISH_USERNAME
+- MAVEN_PUBLISH_PASSWORD
+
+Distribution Management section -
+
+```xml
+  <distributionManagement>
+    <repository>
+      <id>maven-publish</id>
+      <name>AVIO Releases Repository</name>
+      <url>https://avio.jfrog.io/artifactory/mulesoft-mvn-local/</url>
+    </repository>
+    <snapshotRepository>
+      <id>maven-publish</id>
+      <name>AVIO Snapshots Repository</name>
+      <url>https://avio.jfrog.io/artifactory/mulesoft-mvn-local/</url>
+    </snapshotRepository>
+  </distributionManagement>
+```
 
 ### `maven-post-release.yml`
 
