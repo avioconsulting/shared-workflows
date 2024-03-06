@@ -43,8 +43,8 @@ jobs:
     env:
       OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
       OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-      MAVEN_PUBLISH_USERNAME: ${{ secrets.MAVEN_PUBLISH_USERNAME }}
-      MAVEN_PUBLISH_PASSWORD: ${{ secrets.MAVEN_PUBLISH_PASSWORD }}
+      AVIO_REPO_USER: ${{ secrets.JFROG_USER }}
+      AVIO_REPO_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
       MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
@@ -81,9 +81,9 @@ jobs:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
           cache: maven
-          server-id: maven-publish
-          server-username: MAVEN_PUBLISH_USERNAME
-          server-password: MAVEN_PUBLISH_PASSWORD
+          server-id: avio-releases
+          server-username: AVIO_REPO_USER
+          server-password: AVIO_REPO_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           gpg-passphrase:  MAVEN_GPG_PASSPHRASE
 
