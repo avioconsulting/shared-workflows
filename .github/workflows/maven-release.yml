@@ -76,7 +76,7 @@ jobs:
 
       - name: Set up JDK for maven deployment credentials
         uses: actions/setup-java@v4
-        if: ${{ env.MAVEN_PUBLISH_USERNAME != '' }}
+        if: ${{ env.AVIO_REPO_USER != '' }}
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
@@ -84,8 +84,8 @@ jobs:
           server-id: avio-releases
           server-username: AVIO_REPO_USER
           server-password: AVIO_REPO_PASSWORD
-          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-          gpg-passphrase:  MAVEN_GPG_PASSPHRASE
+#          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+#          gpg-passphrase:  MAVEN_GPG_PASSPHRASE
 
       - name: Publish to Maven Central
         id: publish-to-maven-central
