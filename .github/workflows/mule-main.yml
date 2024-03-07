@@ -31,7 +31,7 @@ on:
 jobs:
   Run-Tests:
     if: ${{ (GITHUB.ref_name != 'main' && GITHUB.event_name == 'push') || (GITHUB.event_name == 'pull_request')}}
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-build-test.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-build-test.yml@feature/tsherman/mule-shared-workflows
     secrets: inherit
     with:
       test-only: true
@@ -39,7 +39,7 @@ jobs:
 
   Build-And-Publish:
     if: ${{ GITHUB.ref_name == 'main' && GITHUB.event_name == 'push'}}
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-build-test.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-build-test.yml@feature/tsherman/mule-shared-workflows
     secrets: inherit
     with:
       test-only: false
@@ -49,7 +49,7 @@ jobs:
   Deploy-To-Dev:
     if: ${{ !cancelled() && !failure() &&  GITHUB.ref_name == 'main' && !inputs.deploy-directly-to-prod }}
     needs: [Build-And-Publish]
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-deploy.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-deploy.yml@feature/tsherman/mule-shared-workflows
     secrets: inherit 
     with:
       tag-name: ${{ inputs.tag }} 
@@ -59,7 +59,7 @@ jobs:
   
   Deploy-To-UAT:
     if: ${{ !cancelled() && !failure() && GITHUB.ref_name == 'main' && !inputs.deploy-directly-to-prod }}
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-deploy.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-deploy.yml@feature/tsherman/mule-shared-workflows
     needs: [Deploy-To-Dev]
     secrets: inherit
     with:
@@ -70,7 +70,7 @@ jobs:
 
   Deploy-To-Prod:
     if: ${{ !cancelled() && !failure() && GITHUB.ref_name == 'main' }}
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-deploy.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-deploy.yml@feature/tsherman/mule-shared-workflows
     needs: [Deploy-To-Dev, Deploy-To-UAT]
     secrets: inherit
     with:
@@ -81,7 +81,7 @@ jobs:
 
   Create-Release:
     if: ${{ !cancelled() &&  !failure() && GITHUB.ref_name == 'main' && GITHUB.event_name == 'push' && needs.Build-And-Publish.result == 'success' && needs.Deploy-to-PROD.result == 'success' }}
-    uses: ts-software-solutions/shared-workflows/.github/workflows/mule-create-release.yml@main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-create-release.yml@feature/tsherman/mule-shared-workflows
     needs: [Build-And-Publish, Deploy-To-Dev, Deploy-To-UAT, Deploy-To-Prod]
     secrets: inherit
     with:
