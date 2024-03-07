@@ -1,0 +1,70 @@
+name: Create official tag and Release
+
+on:
+  workflow_call:
+    secrets:
+      GH_PAT: 
+        required: true
+    inputs:
+      early-access-tag-name: 
+        description: Name of the early release tag name
+        required: true
+        type: string
+        default: 'early-access'
+      version-to-release: 
+        description: Name of the official release and tag after prod deployment
+        required: true
+        type: string
+
+
+jobs:
+  create-tag-and-release:
+    runs-on: ubuntu-latest
+    steps:
+
+
+    - name: Set up java 11+ (needed for jreleaser)
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+
+    - name: Checkout main branch
+      uses: actions/checkout@v4
+      with:
+        ref: "main"
+        fetch-depth: 0
+        fetch-tags: true
+    
+    - name: Get Jar file from early-release prereleasee
+      uses: robinraju/release-downloader@v1.8
+      with: 
+        tag: "${{ inputs.early-access-tag-name}}"
+        fileName: "*.jar"
+        tarBall: false
+        zipBall: false
+        out-file-path: "release_assets"
+        extract: false
+        token: ${{ secrets.GH_PAT }}
+
+    - name: Move Jar to target directory for jreleaser
+      id: get_paths
+      run: |
+        FILE=$(ls release_assets/*.jar)
+        echo $FILE
+        cd release_assets/
+        FILE_NAME=$(ls *.jar)
+        echo $FILE_NAME
+        cd ..
+        mkdir target
+        cp $FILE ./target/$FILE_NAME
+        ls target/
+
+    - name: Run JReleaser
+      uses: jreleaser/release-action@v2
+      env:
+        JRELEASER_PROJECT_VERSION: ${{ inputs.version-to-release }}
+        JRELEASER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+      with:
+        setup-java: false
+        version: 1.6.0

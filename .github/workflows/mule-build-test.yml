@@ -1,0 +1,175 @@
+name: Test and build Jar File 
+
+on:
+  workflow_call:
+    secrets:
+      MULE_CRYPTO_KEY: 
+        required: true
+      MULE_EE_REPO_USERNAME: 
+        required: true
+      MULE_EE_REPO_PASSWORD: 
+        required: true
+      MULE_CLIENT_ID: 
+        required: true
+      MULE_CLIENT_SECRET: 
+        required: true
+      GH_PAT: 
+        required: true
+    inputs:
+      test-only: 
+        description: Select true if you only want to run tests. False will run tests, build, and publish a snapshot release
+        required: false
+        type: boolean
+        default: true
+      mule-env: 
+        description: |
+          The MuleSoft environment that the deployment will be deployed to. Default is the current early-access release
+        required: true
+        type: string
+    outputs:
+      released-version: 
+        description: The Version number that was released
+        value: ${{ jobs.build-and-publish.outputs.released-version }}        
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    outputs:
+      released-version: ${{ steps.version.outputs.VERSION_OUTPUT }} 
+    environment: ${{ inputs.mule-env }}
+    steps:
+
+    - name: checkout current branch
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ GITHUB.ref }}
+        token: ${{ secrets.GH_PAT }}
+    
+    # Setup java and maven settings
+    - name: Set up JDK 8
+      uses: actions/setup-java@v4
+      with:
+        java-version: '8'
+        distribution: 'temurin'
+        cache: maven
+   
+    - name: Configure Maven settings
+      uses: whelk-io/maven-settings-xml-action@v22
+      with:
+        servers: >
+          [
+            {
+              "id": "avio-mulesoft-ee-releases",
+              "username": "${{ secrets.MULE_EE_REPO_USERNAME }}",
+              "password": "${{ secrets.MULE_EE_REPO_PASSWORD }}"
+            }
+          ]
+        mirrors: >
+          [
+            {
+              "id": "avio-mulesoft-ee-releases",
+              "name": "avio-mulesoft-ee-releases",
+              "mirrorOf": "MuleRepository",
+              "url": "https://avio.jfrog.io/artifactory/mulesoft-ee-releases/"
+            }
+          ]
+        repositories: >
+          [
+            { 
+              "id": "MuleRepository", 
+              "name": "MuleRepository", 
+              "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/", 
+              "releases": { 
+                "enabled": "true" 
+              }, 
+              "snapshots": { 
+                "enabled": "true" 
+              } 
+            }
+          ]
+        active_profiles: >
+          [
+            "github"
+          ]
+        output_file: .m2/settings.xml
+
+
+    - name: Run Unit Tests
+      if: ${{ inputs.test-only }}
+      run: |
+        mvn clean test -e -U -s ./.m2/settings.xml \
+        -Denv=dev \
+        -Dcrypto.key=${{ secrets.MULE_CRYPTO_KEY }}
+
+    - name: |
+        Ensure all branches are within convention. Branches should be prefixed by feature, fix, or hotfix followed by '/'
+        branches should include the user that completed the work's github username in all lowercase followed by '/'
+        Finally a short description of the work done in snake case
+        ex: feature/tannersherman/add-new-field-to-addresses
+      if: ${{ inputs.test-only }}
+      uses: deepakputhraya/action-branch-name@master
+      with:
+        regex: '(feature|fix|hotfix)\/([a-z]{1,15})\/([a-z0-9-]{1,30})'
+        allowed_prefixes: ''
+        ignore: main
+        min_length: 5
+        max_length: 100      
+
+
+    - name: Set Version Number based on Date and build number
+      if: ${{ !inputs.test-only }}
+      id: version
+      run: |
+        PATCH=${{ github.run_number }}
+        PATCH+=$(date +'%d%m%y')
+        echo VERSION_OUTPUT=1.0.$PATCH >> $GITHUB_OUTPUT
+    
+    - name: Set Pom version to generated version
+      if: ${{ !inputs.test-only }}
+      run: |
+        echo setting pom version to: ${{ steps.version.outputs.VERSION_OUTPUT }}
+        mvn versions:set "-DnewVersion=${{ steps.version.outputs.VERSION_OUTPUT }}"
+
+    - name: Build Jar
+      if: ${{ !inputs.test-only }}
+      run: |
+        mvn clean package \
+        -e -U -s ./.m2/settings.xml \
+        -Denv=dev \
+        -Dcrypto.key=${{ secrets.MULE_CRYPTO_KEY }} \
+        -DmuleDeploy.appArtifact=./target/mule-sample-project-${{ steps.version.outputs.VERSION_OUTPUT }}-mule-application.jar \
+        "-DmuleDeploy.workerType=${{ vars.WORKER_SIZE }}" \
+        "-DmuleDeploy.workerCount=${{ vars.WORKER_COUNT }}" \
+        "-DmuleDeploy.region=${{ vars.REGION }}"
+
+    - name: Get Jar File Path
+      if: ${{ !inputs.test-only }}
+      run: |
+        echo "FILE_PATH=$(ls ./target/*.jar)" >> $GITHUB_OUTPUT
+      id: file_properties
+
+    - name: Set up java for jreleaser
+      if: ${{ !inputs.test-only }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+
+    - name: Run JReleaser
+      if: ${{ !inputs.test-only }}
+      uses: jreleaser/release-action@v2
+      env:
+        JRELEASER_PROJECT_VERSION: ${{ steps.version.outputs.VERSION_OUTPUT }}-SNAPSHOT
+        JRELEASER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+      with:
+        setup-java: false
+        version: 1.6.0
+
+    - name: JReleaser release output
+      if: ${{ !inputs.test-only }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: jreleaser-release
+        path: |
+          out/jreleaser/trace.log
+          out/jreleaser/output.properties
