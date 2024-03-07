@@ -26,6 +26,11 @@ on:
           The MuleSoft environment that the deployment will be deployed to. Default is the current early-access release
         required: true
         type: string
+      mule-deploy-args:
+        description: Additional arguments that should be provided during deployment using the mule deploy library from AVIO
+        required: false
+        type: string
+        default: '' 
     outputs:
       released-version: 
         description: The Version number that was released
@@ -140,7 +145,8 @@ jobs:
         -DmuleDeploy.appArtifact=./target/mule-sample-project-${{ steps.version.outputs.VERSION_OUTPUT }}-mule-application.jar \
         "-DmuleDeploy.workerType=${{ vars.WORKER_SIZE }}" \
         "-DmuleDeploy.workerCount=${{ vars.WORKER_COUNT }}" \
-        "-DmuleDeploy.region=${{ vars.REGION }}"
+        "-DmuleDeploy.region=${{ vars.REGION }}" \
+        ${{ inputs.mule-deploy-args }}
 
     - name: Get Jar File Path
       if: ${{ !inputs.test-only }}

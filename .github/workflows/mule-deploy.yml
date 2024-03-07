@@ -29,6 +29,11 @@ on:
         description: The tag name used in the build stage so the release assets can be fetched
         required: true
         type: string
+      mule-deploy-args:
+        description: Additional arguments that should be provided during deployment using the mule deploy library from AVIO
+        required: false
+        type: string
+        default: '' 
 
 
         
@@ -96,4 +101,6 @@ jobs:
         "-DmuleDeploy.workerType=${{ vars.WORKER_SIZE }}" \
         "-DmuleDeploy.workerCount=${{ vars.WORKER_COUNT }}" \
         "-DmuleDeploy.region=${{ vars.REGION }}" \
-        "-Danypoint.org.name=${{ inputs.anypoint-org-name }}"
+        "-Danypoint.org.name=${{ inputs.anypoint-org-name }}" \
+        ${{ inputs.mule-deploy-args }}
+
