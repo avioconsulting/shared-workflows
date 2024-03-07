@@ -51,15 +51,15 @@ jobs:
         with:
           fetch-depth: '0'
           submodules: 'recursive'
-
-      - name: Download Build Artifacts (JARs only)
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
-          path: target
-
-      - name: Display structure of downloaded files
-        run: ls -R
+#   Do we need this download of jars? deploy step does rebuild it.
+#      - name: Download Build Artifacts (JARs only)
+#        uses: actions/download-artifact@v4
+#        with:
+#          name: build-artifacts
+#          path: target
+#
+#      - name: Display structure of downloaded files
+#        run: ls -R
 
       - name: Set up JDK for maven central publish
         uses: actions/setup-java@v4
