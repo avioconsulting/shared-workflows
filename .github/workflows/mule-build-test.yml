@@ -5,9 +5,9 @@ on:
     secrets:
       MULE_CRYPTO_KEY: 
         required: true
-      MULE_EE_REPO_USERNAME: 
+      JFROG_USER: 
         required: true
-      MULE_EE_REPO_PASSWORD: 
+      JFROG_PASSWORD: 
         required: true
       MULE_CLIENT_ID: 
         required: true
@@ -65,8 +65,8 @@ jobs:
           [
             {
               "id": "avio-mulesoft-ee-releases",
-              "username": "${{ secrets.MULE_EE_REPO_USERNAME }}",
-              "password": "${{ secrets.MULE_EE_REPO_PASSWORD }}"
+              "username": "${{ secrets.JFROG_USER }}",
+              "password": "${{ secrets.JFROG_PASSWORD }}"
             }
           ]
         mirrors: >
