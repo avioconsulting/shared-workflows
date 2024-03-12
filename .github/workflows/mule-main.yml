@@ -79,9 +79,9 @@ jobs:
       anypoint-org-name: ${{ inputs.anypoint-org-name }}
       mule-deploy-args: ${{ inputs.mule-deploy-args }}
 
-  Create-Release:
+  Post-Release:
     if: ${{ !cancelled() &&  !failure() && GITHUB.ref_name == 'main' && GITHUB.event_name == 'push' && needs.Build-And-Publish.result == 'success' && needs.Deploy-to-PROD.result == 'success' }}
-    uses: avioconsulting/shared-workflows/.github/workflows/mule-create-release.yml@feature/tsherman/mule-shared-workflows
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-post-release.yml@feature/tsherman/mule-shared-workflows
     needs: [Build-And-Publish, Deploy-To-Dev, Deploy-To-UAT, Deploy-To-Prod]
     secrets: inherit
     with:

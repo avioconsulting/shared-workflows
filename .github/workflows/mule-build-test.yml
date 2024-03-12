@@ -23,7 +23,7 @@ on:
         default: true
       mule-env: 
         description: |
-          The MuleSoft environment that the deployment will be deployed to. Default is the current early-access release
+          Environment to test against and build jar file for
         required: true
         type: string
       mule-deploy-args:
