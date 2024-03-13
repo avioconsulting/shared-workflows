@@ -148,7 +148,7 @@ jobs:
     #   version-project: mule-linter-core
     #   pr-reviewers: adesjardin, manikmagar, kkingavio
 ```
-### Mule CloudHub Build
+### Mule Build
 * Full [Github flow](https://docs.github.com/en/get-started/using-github/github-flow) release process for a MuleSoft application utilizing AVIO's Mule Deploy Library to deploy to CloudHub 1.0. 
 * To take advantage of the Mule shared workflow you will need to complete the following steps:
   - Configure your application to be deployed with the Mule Deploy Library. 
@@ -205,7 +205,8 @@ jobs:
       prod-env: 'PROD'
       # Arguments to add to the end of the invocation of the mule deploy library
       mule-deploy-args: |
-        -DmuleDeploy.addParam=${{ secrets.ADD_PARAM }}
+        -DmuleDeploy.addParam=${{ secrets.ADD_PARAM }} \
+        -DmuleDeploy.secondParam=${{ secrets.SECOND_PARAM }}
 ```
 
 
