@@ -194,7 +194,7 @@ on:
 
 jobs:
   Mule-Pipeline:
-    uses: avioconsulting/shared-workflows/.github/workflows/mule-main.yml@feature/main
+    uses: avioconsulting/shared-workflows/.github/workflows/mule-main.yml@main
     secrets: inherit
     with:
       tag-name: ${{ inputs.tag-name }}
