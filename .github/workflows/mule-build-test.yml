@@ -13,8 +13,6 @@ on:
         required: true
       MULE_CLIENT_SECRET: 
         required: true
-      GH_PAT: 
-        required: true
     inputs:
       test-only: 
         description: Select true if you only want to run tests. False will run tests, build, and publish a snapshot release
@@ -48,7 +46,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ GITHUB.ref }}
-        token: ${{ secrets.GH_PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }}
     
     # Setup java and maven settings
     - name: Set up JDK 8
@@ -166,7 +164,7 @@ jobs:
       uses: jreleaser/release-action@v2
       env:
         JRELEASER_PROJECT_VERSION: ${{ steps.version.outputs.VERSION_OUTPUT }}-SNAPSHOT
-        JRELEASER_GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         setup-java: false
         version: 1.6.0

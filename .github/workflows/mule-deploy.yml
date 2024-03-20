@@ -13,8 +13,6 @@ on:
         required: true
       ANYPOINT_CLIENT_SECRET: 
         required: true
-      GH_PAT: 
-        required: true
     inputs:
       anypoint-org-name:
         description: Organization name that is the target of the deployment
@@ -66,7 +64,7 @@ jobs:
         zipBall: true
         out-file-path: "release_assets"
         extract: true
-        token: ${{ secrets.GH_PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Get paths to source code and jar
       id: get_paths
