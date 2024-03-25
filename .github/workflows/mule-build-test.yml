@@ -72,6 +72,11 @@ jobs:
               "password": "${{ secrets.JFROG_PASSWORD }}"
             },
             {
+              "id": "anypoint-exchange-v3",
+              "username": "~~~Client~~~",
+              "password": "${{ secrets.MULE_CLIENT_ID }}~?~${{ secrets.MULE_CLIENT_SECRET }}"
+            },
+            {
               "id": "avio-mulesoft-ee-releases",
               "username": "${{ secrets.JFROG_USER }}",
               "password": "${{ secrets.JFROG_PASSWORD }}"
