@@ -62,6 +62,16 @@ jobs:
         servers: >
           [
             {
+              "id": "avio-releases",
+              "username": "${{ secrets.JFROG_USER }}",
+              "password": "${{ secrets.JFROG_PASSWORD }}"
+            },
+            {
+              "id": "avio-snapshots",
+              "username": "${{ secrets.JFROG_USER }}",
+              "password": "${{ secrets.JFROG_PASSWORD }}"
+            },
+            {
               "id": "avio-mulesoft-ee-releases",
               "username": "${{ secrets.JFROG_USER }}",
               "password": "${{ secrets.JFROG_PASSWORD }}"
