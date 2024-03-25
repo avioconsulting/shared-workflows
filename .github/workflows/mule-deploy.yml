@@ -100,5 +100,9 @@ jobs:
         "-DmuleDeploy.workerCount=${{ vars.WORKER_COUNT }}" \
         "-DmuleDeploy.region=${{ vars.REGION }}" \
         "-Danypoint.org.name=${{ inputs.anypoint-org-name }}" \
+        "-DmuleDeploy.aws.accesskey=${{ secrets.AWS_ACCESS_KEY }}" \
+        "-DmuleDeploy.aws.secretkey=${{ secrets.AWS_SECRET_KEY }}" \
+        "-DmuleDeploy.log.queuename=${{ secrets.LOG_QUEUE_NAME }}" \
+        "-DmuleDeploy.aws.region=${{ secrets.AWS_REGION }}" \
         ${{ inputs.mule-deploy-args }}
 
