@@ -106,6 +106,8 @@ jobs:
           ]
         output_file: .m2/settings.xml
 
+    - name: Print settings.xml
+      run: cat ./.m2/settings.xml 
 
     - name: Run Unit Tests
       if: ${{ inputs.test-only }}
