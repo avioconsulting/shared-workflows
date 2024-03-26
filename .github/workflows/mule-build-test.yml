@@ -104,7 +104,6 @@ jobs:
           [
             "github"
           ]
-        output_file: ~/.m2/settings.xml
 
     - name: Print effective mvn settings
       run: mvn help:effective-settings
