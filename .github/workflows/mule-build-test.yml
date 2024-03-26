@@ -62,7 +62,7 @@ jobs:
         servers: >
           [
             {
-              "id": "avio",
+              "id": "avio-releases",
               "username": "${{ secrets.JFROG_USER_TS }}",
               "password": "${{ secrets.JFROG_PASSWORD_TS }}"
             },
@@ -104,7 +104,7 @@ jobs:
           [
             "github"
           ]
-        output_file: .m2/settings.xml
+        output_file: ~/.m2/settings.xml
 
     - name: Print effective mvn settings
       run: mvn help:effective-settings
