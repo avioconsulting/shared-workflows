@@ -82,15 +82,15 @@ jobs:
             {
               "id": "avio-mulesoft-ee-releases",
               "name": "avio-mulesoft-ee-releases",
-              "mirrorOf": "mulesoft-ee-releases",
+              "mirrorOf": "MuleRepository",
               "url": "https://avio.jfrog.io/artifactory/mulesoft-ee-releases/"
             }
           ]
         repositories: >
           [
             { 
-              "id": "mulesoft-ee-releases", 
-              "name": "mulesoft-ee-releases", 
+              "id": "MuleRepository", 
+              "name": "MuleRepository", 
               "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/", 
               "releases": { 
                 "enabled": "true" 
