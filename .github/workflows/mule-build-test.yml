@@ -62,7 +62,7 @@ jobs:
         servers: >
           [
             {
-              "id": "avio-releases",
+              "id": "avio",
               "username": "${{ secrets.JFROG_USER_TS }}",
               "password": "${{ secrets.JFROG_PASSWORD_TS }}"
             },
