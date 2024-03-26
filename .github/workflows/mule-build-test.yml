@@ -5,9 +5,9 @@ on:
     secrets:
       MULE_CRYPTO_KEY: 
         required: true
-      JFROG_USER: 
+      JFROG_USER_TS: 
         required: true
-      JFROG_PASSWORD: 
+      JFROG_PASSWORD_TS: 
         required: true
       MULE_CLIENT_ID: 
         required: true
@@ -63,8 +63,8 @@ jobs:
           [
             {
               "id": "avio-releases",
-              "username": "${{ secrets.JFROG_USER }}",
-              "password": "${{ secrets.JFROG_PASSWORD }}"
+              "username": "${{ secrets.JFROG_USER_TS }}",
+              "password": "${{ secrets.JFROG_PASSWORD_TS }}"
             },
             {
               "id": "anypoint-exchange-v3",
@@ -73,8 +73,8 @@ jobs:
             },
             {
               "id": "avio-mulesoft-ee-releases",
-              "username": "${{ secrets.JFROG_USER }}",
-              "password": "${{ secrets.JFROG_PASSWORD }}"
+              "username": "${{ secrets.JFROG_USER_TS }}",
+              "password": "${{ secrets.JFROG_PASSWORD_TS }}"
             }
           ]
         mirrors: >
