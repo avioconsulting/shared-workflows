@@ -62,7 +62,7 @@ jobs:
       - name: Increment Version from Input Argument
         if: ${{ inputs.next-version != '' }}
         run: |
-          ./mvnw clean build-helper:parse-version versions:set -DnewVersion=${{ inputs.next-version }} -DprocessAllModules versions:commit
+          ./mvnw clean versions:set -DnewVersion=${{ inputs.next-version }} -DprocessAllModules versions:commit
 
       - name: Set New Version Variable
         id: set-new-version
