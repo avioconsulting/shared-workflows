@@ -82,6 +82,56 @@ jobs:
         java-version: '8'
         distribution: 'temurin'
         cache: maven
+    
+    - name: Configure Maven settings
+      uses: whelk-io/maven-settings-xml-action@v22
+      with:
+        servers: >
+          [
+            {
+              "id": "avio-releases",
+              "username": "${{ secrets.JFROG_USER }}",
+              "password": "${{ secrets.JFROG_PASSWORD }}"
+            },
+            {
+              "id": "anypoint-exchange-v3",
+              "username": "~~~Client~~~",
+              "password": "${{ secrets.MULE_CLIENT_ID }}~?~${{ secrets.MULE_CLIENT_SECRET }}"
+            },
+            {
+              "id": "avio-mulesoft-ee-releases",
+              "username": "${{ secrets.JFROG_USER }}",
+              "password": "${{ secrets.JFROG_PASSWORD }}"
+            }
+          ]
+        mirrors: >
+          [
+            {
+              "id": "avio-mulesoft-ee-releases",
+              "name": "avio-mulesoft-ee-releases",
+              "mirrorOf": "MuleRepository",
+              "url": "https://avio.jfrog.io/artifactory/mulesoft-ee-releases/"
+            }
+          ]
+        repositories: >
+          [
+            { 
+              "id": "MuleRepository", 
+              "name": "MuleRepository", 
+              "url": "https://repository.mulesoft.org/nexus-ee/content/repositories/releases-ee/", 
+              "releases": { 
+                "enabled": "true" 
+              }, 
+              "snapshots": { 
+                "enabled": "true" 
+              } 
+            }
+          ]
+        active_profiles: >
+          [
+            "github"
+          ]
+
 
 
     - name: Deploy To specified environment based on profile
