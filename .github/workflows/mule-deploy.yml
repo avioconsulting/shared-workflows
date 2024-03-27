@@ -62,15 +62,14 @@ jobs:
         fileName: "*.jar"
         tarBall: false
         zipBall: true
-        out-file-path: "release_assets"
         extract: true
         token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Get paths to source code and jar
       id: get_paths
       run: |
-        echo "SOURCE_CODE=$(ls -1 -d release_assets/*mule-sample-project*/)" >> $GITHUB_OUTPUT
-        echo "JAR_FILE=$(ls release_assets/*.jar)" >> $GITHUB_OUTPUT
+        echo "SOURCE_CODE=$(ls -d */)" >> $GITHUB_OUTPUT
+        echo "JAR_FILE=$(ls *.jar)" >> $GITHUB_OUTPUT
 
     - name: Copy necessary files into working directory
       run: |
