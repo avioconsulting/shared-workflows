@@ -86,7 +86,7 @@ jobs:
 
     - name: Deploy To specified environment based on profile
       run: |
-        mvn mule-deploy:deploy \
+        mvn com.avioconsulting.mule:mule-deploy-maven-plugin:1.2.0:deploy \
         -DmuleDeploy.env=${{ inputs.mule-env }} \
         -DmuleDeploy.environmentProperty=${{ inputs.mule-env }} \
         -DmuleDeploy.appArtifact=${{ steps.get_paths.outputs.JAR_FILE }} \
