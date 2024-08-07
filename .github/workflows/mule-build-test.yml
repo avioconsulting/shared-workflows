@@ -134,7 +134,7 @@ jobs:
       if: ${{ !inputs.test-only }}
       id: version
       run: |
-        PATCH=$(date +'%Y%m%d')
+        PATCH=$(date '+%y%m%d')
         PATCH+=${{ github.run_number }}
         echo VERSION_OUTPUT=1.0.$PATCH >> $GITHUB_OUTPUT
     
