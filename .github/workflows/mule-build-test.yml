@@ -135,7 +135,7 @@ jobs:
       id: version
       run: |
         PATCH=${{ github.run_number }}
-        PATCH+=$(date +'%d%m%y')
+        PATCH+=$(date +'%Y%m%d')
         echo VERSION_OUTPUT=1.0.$PATCH >> $GITHUB_OUTPUT
     
     - name: Set Pom version to generated version
