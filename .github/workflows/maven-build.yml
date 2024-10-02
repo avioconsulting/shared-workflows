@@ -46,13 +46,13 @@ jobs:
       version: ${{ steps.set-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: '0'
           submodules: 'recursive'
 
       - name: Set up JDK for build and unit test with Mule EE
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         if: ${{ inputs.include-mule-ee-repo }}
         with:
           distribution: ${{ inputs.java-distribution }}
@@ -63,7 +63,7 @@ jobs:
           server-password: MULE_EE_PASSWORD
 
       - name: Set up JDK for build and unit test
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         if: ${{ !inputs.include-mule-ee-repo }}
         with:
           distribution: ${{ inputs.java-distribution }}
@@ -95,7 +95,7 @@ jobs:
             target/surefire-reports/*.xml
 
       - name: Upload Build Artifacts (JARs and Maven Staging Repo)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
           path: |
