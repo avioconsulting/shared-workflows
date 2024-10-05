@@ -103,7 +103,7 @@ jobs:
           JRELEASER_NEXUS2_MAVEN_CENTRAL_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           JRELEASER_NEXUS2_MAVEN_CENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
           JRELEASER_VERSION: 1.14.0
-          JRELEASER_FEIGN_LOGGER_LEVEL: 'BASIC'
+          JRELEASER_FEIGN_LOGGER_LEVEL: BASIC
         with:
           version: ${{ env.JRELEASER_VERSION }}
           arguments: full-release
