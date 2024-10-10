@@ -182,7 +182,6 @@ jobs:
 
 Maven release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
-- GIT_TOKEN
 - JRELEASER_GPG_PASSPHRASE
 - JRELEASER_GPG_PUBLIC_KEY
 - JRELEASER_GPG_SECRET_KEY
@@ -285,7 +284,6 @@ Distribution Management section -
 
 Gradle release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
-- GIT_TOKEN
 - JRELEASER_GPG_PASSPHRASE
 - JRELEASER_GPG_PUBLIC_KEY
 - JRELEASER_GPG_SECRET_KEY
