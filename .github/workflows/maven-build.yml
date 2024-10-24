@@ -93,6 +93,7 @@ jobs:
         with:
           files: |
             target/surefire-reports/*.xml
+            */target/surefire-reports/*.xml
 
       - name: Upload Build Artifacts (JARs and Maven Staging Repo)
         uses: actions/upload-artifact@v4
