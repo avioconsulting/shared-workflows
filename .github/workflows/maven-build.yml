@@ -102,3 +102,5 @@ jobs:
           path: |
             target/*.jar
             target/staging-deploy
+            */target/*.jar
+            */target/staging-deploy
