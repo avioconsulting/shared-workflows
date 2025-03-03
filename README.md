@@ -306,3 +306,31 @@ Gradle release workflow requires the following [Organization Secrets](https://gi
 | `version-project`   | For use with multi-module projects, this is used to determine application version | boolean | false    | n/a                               | input        |
 | `pr-reviewers`      | Users to be included in the post-release pull request                             | string  | false    | adesjardin, manikmagar, kkingavio | input        |
 
+
+### Publish docs to GitHub Pages
+
+Create/Add a `.github/workflows/github-pages.yml` file within the project.
+
+```yaml
+# Simple workflow for deploying static content to GitHub Pages
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  # Temporary on current branch
+  push:
+    branches:
+      - main
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  Build-Maven:
+    uses: avioconsulting/shared-workflows/.github/workflows/github-pages.yml@feat/add-github-pages
+    secrets: inherit
+    # with:
+    #   java-distribution: temurin
+    #   java-version: 8
+    #   pages-directory: './target/docs'
+```
