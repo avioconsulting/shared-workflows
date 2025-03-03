@@ -3,21 +3,22 @@ name: Deploy static content to Pages
 
 on:
   workflow_call:
-    java-distribution:
-      description: The Java Distribution to use, default 'temurin'
-      required: false
-      type: string
-      default: temurin
-    java-version:
-      description: The Java Version to use, default '8'
-      required: false
-      type: string
-      default: 8
-    pages-directory:
-      description: Generated Github pages directory to upload
-      required: false
-      type: string
-      default: './target/docs/'
+    inputs:
+      java-distribution:
+        description: The Java Distribution to use, default 'temurin'
+        required: false
+        type: string
+        default: temurin
+      java-version:
+        description: The Java Version to use, default '8'
+        required: false
+        type: string
+        default: 8
+      pages-directory:
+        description: Generated Github pages directory to upload
+        required: false
+        type: string
+        default: './target/docs/'
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
