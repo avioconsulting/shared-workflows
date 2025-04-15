@@ -220,20 +220,20 @@ Distribution Management section -
 ### Deploying to AVIO's JFrog Artifactory
 
 Assign following Secrets to the target repository -
-- MAVEN_PUBLISH_USERNAME
-- MAVEN_PUBLISH_PASSWORD
+- AVIO_REPO_USER
+- AVIO_REPO_PASSWORD
 
 Distribution Management section -
 
 ```xml
   <distributionManagement>
     <repository>
-      <id>maven-publish</id>
+      <id>avio-releases</id>
       <name>AVIO Releases Repository</name>
       <url>https://avio.jfrog.io/artifactory/mulesoft-mvn-local/</url>
     </repository>
     <snapshotRepository>
-      <id>maven-publish</id>
+      <id>avio-releases</id>
       <name>AVIO Snapshots Repository</name>
       <url>https://avio.jfrog.io/artifactory/mulesoft-mvn-local/</url>
     </snapshotRepository>
