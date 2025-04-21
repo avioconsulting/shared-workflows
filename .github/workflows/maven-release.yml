@@ -104,7 +104,7 @@ jobs:
           JRELEASER_NEXUS2_MAVEN_CENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
           JRELEASER_ANNOUNCE_SMTP_PASSWORD: ${{ secrets.JRELEASER_ANNOUNCE_SMTP_PASSWORD }}
           JRELEASER_ANNOUNCE_SMTP_USER: ${{ secrets.JRELEASER_ANNOUNCE_SMTP_USER }}
-          JRELEASER_VERSION: 1.14.0
+          JRELEASER_VERSION: 1.17.0
         with:
           version: ${{ env.JRELEASER_VERSION }}
           arguments: full-release
