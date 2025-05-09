@@ -103,4 +103,5 @@ jobs:
             target/*.jar
             target/staging-deploy
             */target/*.jar
+            */target/*.zip
             */target/staging-deploy
