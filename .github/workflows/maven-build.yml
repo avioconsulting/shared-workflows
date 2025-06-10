@@ -40,8 +40,8 @@ jobs:
   Build-With-Maven:
     runs-on: ubuntu-latest
     env:
-      MULE_EE_USERNAME: ${{ secrets.MULE_EE_USERNAME }}
-      MULE_EE_PASSWORD: ${{ secrets.MULE_EE_PASSWORD }}
+      AVIO_REPO_USER: ${{ secrets.JFROG_USER }}
+      AVIO_REPO_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
     outputs:
       version: ${{ steps.set-version.outputs.version }}
 
@@ -51,24 +51,15 @@ jobs:
           fetch-depth: '0'
           submodules: 'recursive'
 
-      - name: Set up JDK for build and unit test with Mule EE
-        uses: actions/setup-java@v4
-        if: ${{ inputs.include-mule-ee-repo }}
-        with:
-          distribution: ${{ inputs.java-distribution }}
-          java-version: ${{ inputs.java-version }}
-          cache: maven
-          server-id: mulesoft-ee-releases
-          server-username: MULE_EE_USERNAME
-          server-password: MULE_EE_PASSWORD
-
       - name: Set up JDK for build and unit test
         uses: actions/setup-java@v4
-        if: ${{ !inputs.include-mule-ee-repo }}
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
           cache: maven
+          server-id: avio-releases
+          server-username: AVIO_REPO_USER
+          server-password: AVIO_REPO_PASSWORD
 
       - name: Set Version
         id: set-version
