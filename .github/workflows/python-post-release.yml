@@ -11,7 +11,7 @@ on:
         description: The python version to use, default '3.18'
         required: false
         type: string
-        default: 3.13
+        default: 3.12
       main-branch:
         description: Main branch name
         required: false

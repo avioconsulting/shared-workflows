@@ -4,10 +4,10 @@ on:
   workflow_call:
     inputs:
       python-version:
-        description: The python version to use, default '3.18'
+        description: The python version to use, default '3.12
         required: false
         type: string
-        default: 3.13
+        default: 3.12
       include-test-results:
         description: A flag to publish test results
         required: false
