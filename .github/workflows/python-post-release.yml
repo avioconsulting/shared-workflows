@@ -46,14 +46,14 @@ jobs:
 
       - name: Increment Version
         run: |
-          CURRENT=$(toml get --toml-path=pyproject.toml project.version)
+          CURRENT=$(uv run toml get --toml-path=pyproject.toml project.version)
           IFS='.' read -r major minor patch <<< "$CURRENT"
           NEW_VERSION="$major.$minor.$((patch + 1))"
-          toml set --toml-path=pyproject.toml project.version "$NEW_VERSION"
+          uv run toml set --toml-path=pyproject.toml project.version "$NEW_VERSION"
 
       - name: Set New Version Variable
         id: set-new-version
-        run: echo VERSION=$(toml get --toml-path=pyproject.toml project.version) >> $GITHUB_OUTPUT
+        run: echo VERSION=$(uv run toml get --toml-path=pyproject.toml project.version) >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v7

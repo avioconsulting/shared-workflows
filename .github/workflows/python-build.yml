@@ -47,7 +47,7 @@ jobs:
           crewai install
 
       - name: PyTest
-        run: pytest test --junit-xml pytest.xml
+        run: uv run pytest test --junit-xml pytest.xml
 
       - name: Upload Test Results
         if: (!cancelled())
@@ -97,7 +97,7 @@ jobs:
 
       - name: Set Version
         id: set-version
-        run: echo version=$(toml get --toml-path=pyproject.toml project.version) >> $GITHUB_OUTPUT  
+        run: echo version=$(uv run toml get --toml-path=pyproject.toml project.version) >> $GITHUB_OUTPUT  
 
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
