@@ -60,11 +60,14 @@ jobs:
     name: "Build and Publish artifacts"
     needs: test
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.set-version.outputs.version }}
     permissions:
+      checks: write
+      pull-requests: write
       contents: read
       issues: read
+    outputs:
+      version: ${{ steps.set-version.outputs.version }}
+    
     steps:
       - name: Download Artifacts
         if: ${{ inputs.include-test-results }}
