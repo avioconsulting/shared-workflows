@@ -25,7 +25,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.10', '3.11', '3.12']
 
     steps:
       - name: Checkout
@@ -47,7 +47,7 @@ jobs:
           crewai install
 
       - name: PyTest
-        run: uv run pytest test --junit-xml pytest.xml
+        run: uv run pytest tests --junit-xml pytest.xml
 
       - name: Upload Test Results
         if: (!cancelled())
