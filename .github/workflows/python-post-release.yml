@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       python-version:
-        description: The python version to use, default '3.18'
+        description: The python version to use, default '3.12'
         required: false
         type: string
         default: 3.12
