@@ -45,10 +45,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install 'crewai[tools]'
           crewai install
-          python -m build
 
       - name: PyTest
-        run: python -m pytest test --junit-xml pytest.xml
+        run: pytest test --junit-xml pytest.xml
 
       - name: Upload Test Results
         if: (!cancelled())
@@ -59,7 +58,6 @@ jobs:
   
   build:
     name: "Build and Publish artifacts"
-    if: ${{ !cancelled() }}
     needs: test
     runs-on: ubuntu-latest
     outputs:
