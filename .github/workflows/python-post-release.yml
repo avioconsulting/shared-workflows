@@ -1,0 +1,66 @@
+name: Maven Post Release Workflow
+
+on:
+  workflow_call:
+    inputs:
+      app-version:
+        description: Application version that was released
+        required: true
+        type: string
+      python-version:
+        description: The python version to use, default '3.18'
+        required: false
+        type: string
+        default: 3.13
+      main-branch:
+        description: Main branch name
+        required: false
+        type: string
+        default: main
+      pr-reviewers:
+        description: Users to be included on the post-release pull request
+        required: false
+        type: string
+        default: adesjardin, manikmagar, tannersherman
+
+jobs:
+  prepare-next-snapshot:
+    runs-on: ubuntu-latest
+    if: ${{ !contains(inputs.app-version, '.dev') && github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: '0'
+          submodules: 'recursive'
+
+      - name: Set up Python 
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+    
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'crewai[tools]'
+          crewai install
+
+      - name: Increment Version
+        run: |
+          CURRENT=$(toml get --toml-path=pyproject.toml project.version)
+          IFS='.' read -r major minor patch <<< "$CURRENT"
+          NEW_VERSION="$major.$minor.$((patch + 1))"
+          toml set --toml-path=pyproject.toml project.version "$NEW_VERSION"
+
+      - name: Set New Version Variable
+        id: set-new-version
+        run: echo VERSION=$(toml get --toml-path=pyproject.toml project.version) >> $GITHUB_OUTPUT
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: "chore/v${{ steps.set-new-version.outputs.version }}"
+          commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
+          title: "chore: Auto increment to v${{ steps.set-new-version.outputs.version }}"
+          delete-branch: true
+          assignees: ${{ github.actor }}
+          reviewers: ${{ inputs.pr-reviewers }}
