@@ -48,7 +48,7 @@ jobs:
         run: |
           CURRENT=$(uv run toml get --toml-path=pyproject.toml project.version)
           IFS='.' read -r major minor patch <<< "$CURRENT"
-          NEW_VERSION="$major.$minor.$((patch + 1))"
+          NEW_VERSION="$major.$minor.$((patch + 1)).dev1"
           uv run toml set --toml-path=pyproject.toml project.version "$NEW_VERSION"
 
       - name: Set New Version Variable
