@@ -149,6 +149,49 @@ jobs:
     #   pr-reviewers: adesjardin, manikmagar, kkingavio
 ```
 
+### Python Build
+
+```yaml
+name: Build and Release for Python Project
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'chore/**'
+      - 'feat/**'
+  pull_request:
+    branches:
+      - 'main'
+
+jobs:
+  Build-Python:
+    secrets: inherit
+    uses: avioconsulting/shared-workflows/.github/workflows/python-build.yml@main
+    with: 
+      # python-version: '3.12'
+      # include-test-results: true
+
+  Release-Python:
+    secrets: inherit
+    needs: Build-Python
+    uses: avioconsulting/shared-workflows/.github/workflows/python-release.yml@main
+    with:
+      app-version: ${{ needs.Build-Python.outputs.app-version }}
+      # python-version: '3.12'
+      # main-branch: 'main'
+
+  Post-Release-Python:
+    secrets: inherit
+    needs: [Build-Python, Release-Python]
+    uses: avioconsulting/shared-workflows/.github/workflows/python-post-release.yml@main
+    with:
+      app-version: ${{ needs.Build-Python.outputs.app-version }}
+      # python-version: '3.12'
+      # main-branch: 'main'
+      # pr-reviewers: adesjardin, manikmagar, kkingavio
+```
+
 ## Shared Workflow Details
 
 ### `maven-build.yml`
@@ -306,6 +349,45 @@ Gradle release workflow requires the following [Organization Secrets](https://gi
 | `version-project`   | For use with multi-module projects, this is used to determine application version | boolean | false    | n/a                               | input        |
 | `pr-reviewers`      | Users to be included in the post-release pull request                             | string  | false    | adesjardin, manikmagar, kkingavio | input        |
 
+### `python-build.yml`
+
+* Runs on any branches defined by the project build.yml, which should include `main`, `chore/*`, `feat/*`
+* Executes initial setup, tests with pytest, and then publishes the unit test results
+
+| Variable               | Description                                                                       | Type    | Required | Default       | Input/Output |
+|------------------------|-----------------------------------------------------------------------------------|---------|----------|---------------|--------------|
+| `python-version`       | The Python Version to use                                                         | string  | false    | 3.12          | input        |
+| `include-test-results` | A flag to publish unit test results                                               | boolean | false    | true          | input        |
+| `app-version`          | The application version                                                           | string  | n/a      | n/a           | output       |
+
+### `python-release.yml`
+
+* Only runs on the `main` branch
+* Executes downloads artifacts, then runs JReleaser, and captures the JReleaser output.
+
+| Variable            | Description                                                         | Type   | Required | Default       | Input/Output |
+|---------------------|---------------------------------------------------------------------|--------|----------|---------------|--------------|
+| `app-version`       | Application version to release                                      | string | true     | n/a           | input        |
+| `python-version`    | The Python Version to use                                           | string | false    | 3.12          | input        |
+| `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main          | input        |
+
+Python release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository:
+
+- JRELEASER_GPG_PASSPHRASE
+- JRELEASER_GPG_PUBLIC_KEY
+- JRELEASER_GPG_SECRET_KEY
+
+### `python-post-release.yml`
+
+* Only runs on `main` branch, if the `app-version` does not include '.dev'
+* Executes initial setup, increments the patch version and adds `.dev1`, then creates a pull request for the version changes
+
+| Variable            | Description                                                         | Type   | Required | Default                           | Input/Output |
+|---------------------|---------------------------------------------------------------------|--------|----------|-----------------------------------|--------------|
+| `app-version`       | Application version to release                                      | string | true     | n/a                               | input        |
+| `python-version`    | The Python Version to use                                           | string | false    | 3.12                              | input        |
+| `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main                              | input        |
+| `pr-reviewers`      | Users to be included in the post-release pull request               | string | false    | adesjardin, manikmagar, kkingavio | input        |
 
 ### Publish docs to GitHub Pages
 
