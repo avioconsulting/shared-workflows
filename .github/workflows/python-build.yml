@@ -16,7 +16,7 @@ on:
     outputs:
       app-version:
         description: The application version
-        value: ${{ jobs.build.outputs.version }}
+        value: ${{ jobs.test.outputs.version }}
 jobs:
   test:
     name: "Build and Publish artifacts"
