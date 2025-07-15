@@ -23,6 +23,7 @@ on:
 jobs:
   Build-Maven:
     uses: avioconsulting/shared-workflows/.github/workflows/maven-build.yml@main
+    secrets: inherit
     # with:
     #   include-mule-ee-repo: false
     #   java-distribution: adopt-hotspot
@@ -33,6 +34,7 @@ jobs:
   Release-Maven:
     needs: Build-Maven
     uses: avioconsulting/shared-workflows/.github/workflows/maven-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Maven.outputs.app-version }}
     #   java-distribution: adopt-hotspot
@@ -44,6 +46,7 @@ jobs:
   Post-Release-Maven:
     needs: [Build-Maven, Release-Maven]
     uses: avioconsulting/shared-workflows/.github/workflows/maven-post-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Maven.outputs.app-version }}
     #   java-distribution: adopt-hotspot
@@ -72,6 +75,7 @@ on:
 jobs:
   Build-Maven:
     uses: avioconsulting/shared-workflows/.github/workflows/maven-build.yml@main
+    secrets: inherit
     with:
       include-mule-ee-repo: true
     #   java-distribution: adopt-hotspot
@@ -82,6 +86,7 @@ jobs:
   Release-Maven:
     needs: Build-Maven
     uses: avioconsulting/shared-workflows/.github/workflows/maven-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Maven.outputs.app-version }}
       publish-maven-central: true
@@ -93,6 +98,7 @@ jobs:
   Post-Release-Maven:
     needs: [Build-Maven, Release-Maven]
     uses: avioconsulting/shared-workflows/.github/workflows/maven-post-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Maven.outputs.app-version }}
     #   java-distribution: adopt-hotspot
@@ -120,6 +126,7 @@ on:
 jobs:
   Build-Gradle:
     uses: avioconsulting/shared-workflows/.github/workflows/gradle-build.yml@main
+    secrets: inherit
     # with:
     #   include-mule-ee-repo: false
     #   java-distribution: adopt-hotspot
@@ -130,6 +137,7 @@ jobs:
   Release-Gradle:
     needs: Build-Gradle
     uses: avioconsulting/shared-workflows/.github/workflows/gradle-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Gradle.outputs.app-version }}
     #   java-distribution: adopt-hotspot
@@ -140,6 +148,7 @@ jobs:
   Post-Release-Gradle:
     needs: [Build-Gradle, Release-Gradle]
     uses: avioconsulting/shared-workflows/.github/workflows/gradle-post-release.yml@main
+    secrets: inherit
     with:
       app-version: ${{ needs.Build-Gradle.outputs.app-version }}
     #   java-distribution: adopt-hotspot
