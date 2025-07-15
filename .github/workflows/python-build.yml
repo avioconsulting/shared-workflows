@@ -64,6 +64,10 @@ jobs:
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
+      - name: Build artifacts
+      - run: |
+          python -m build
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
