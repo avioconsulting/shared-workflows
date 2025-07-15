@@ -47,6 +47,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install uv
           uv sync
+          python -m build
 
       - name: PyTest
         run: uv run pytest tests --junit-xml pytest.xml
@@ -63,10 +64,6 @@ jobs:
 
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
-
-      - name: Build artifacts
-        run: |
-          python -m build
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
