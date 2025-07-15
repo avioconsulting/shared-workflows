@@ -65,7 +65,7 @@ jobs:
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Build artifacts
-      - run: |
+        run: |
           python -m build
 
       - name: Upload Build Artifacts
