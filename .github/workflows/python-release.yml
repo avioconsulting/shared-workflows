@@ -7,11 +7,6 @@ on:
         description: Application version to release
         required: true
         type: string
-      python-version:
-        description: The python version to use, default '3.12'
-        required: false
-        type: string
-        default: 3.12
       main-branch:
         description: Main branch name
         required: false
