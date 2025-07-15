@@ -179,7 +179,6 @@ jobs:
     uses: avioconsulting/shared-workflows/.github/workflows/python-release.yml@main
     with:
       app-version: ${{ needs.Build-Python.outputs.app-version }}
-      # python-version: '3.12'
       # main-branch: 'main'
 
   Post-Release-Python:
@@ -188,6 +187,7 @@ jobs:
     uses: avioconsulting/shared-workflows/.github/workflows/python-post-release.yml@main
     with:
       app-version: ${{ needs.Build-Python.outputs.app-version }}
+      # python-version: '3.12'
       # main-branch: 'main'
       # pr-reviewers: adesjardin, manikmagar, kkingavio
 ```
@@ -368,7 +368,6 @@ Gradle release workflow requires the following [Organization Secrets](https://gi
 | Variable            | Description                                                         | Type   | Required | Default       | Input/Output |
 |---------------------|---------------------------------------------------------------------|--------|----------|---------------|--------------|
 | `app-version`       | Application version to release                                      | string | true     | n/a           | input        |
-| `python-version`    | The Python Version to use                                           | string | false    | 3.12          | input        |
 | `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main          | input        |
 
 Python release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository:
@@ -385,6 +384,7 @@ Python release workflow requires the following [Organization Secrets](https://gi
 | Variable            | Description                                                         | Type   | Required | Default                           | Input/Output |
 |---------------------|---------------------------------------------------------------------|--------|----------|-----------------------------------|--------------|
 | `app-version`       | Application version to release                                      | string | true     | n/a                               | input        |
+| `python-version`    | The Python Version to use                                           | string | false    | 3.12                              | input        |
 | `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main                              | input        |
 | `pr-reviewers`      | Users to be included in the post-release pull request               | string | false    | adesjardin, manikmagar, kkingavio | input        |
 
