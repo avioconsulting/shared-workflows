@@ -61,19 +61,6 @@ jobs:
       - name: Display structure of downloaded files
         run: ls -R
 
-      - name: Set up JDK for maven central publish
-        uses: actions/setup-java@v4
-        if: ${{ env.OSSRH_USERNAME != '' }}
-        with:
-          distribution: ${{ inputs.java-distribution }}
-          java-version: ${{ inputs.java-version }}
-          cache: maven
-          server-id: ossrh
-          server-username: OSSRH_USERNAME
-          server-password: OSSRH_PASSWORD
-          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-          gpg-passphrase:  MAVEN_GPG_PASSPHRASE
-
       - name: Set up JDK for maven deployment credentials
         uses: actions/setup-java@v4
         if: ${{ env.MAVEN_PUBLISH_USERNAME != '' }}
