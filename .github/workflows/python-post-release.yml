@@ -1,4 +1,4 @@
-name: Maven Post Release Workflow
+name: Python Post Release Workflow
 
 on:
   workflow_call:
