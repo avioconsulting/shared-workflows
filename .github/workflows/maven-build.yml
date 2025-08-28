@@ -72,20 +72,20 @@ jobs:
 
       - name: Set Version
         id: set-version
-        run: echo version=$(./mvnw -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
+        run: echo version=$(./mvnw --no-transfer-progress -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
 
       - name: Print Version
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Compile
-        run: ./mvnw compile ${{ inputs.maven-args }}
+        run: ./mvnw --no-transfer-progress compile ${{ inputs.maven-args }}
 
       - name: Verify
-        run: ./mvnw --batch-mode verify ${{ inputs.maven-args }}
+        run: ./mvnw --no-transfer-progress --batch-mode verify ${{ inputs.maven-args }}
 
       - name: Stage Maven Artifacts
         if: ${{ inputs.stage-maven-artifacts }}
-        run: ./mvnw -P release deploy -DskipTests=true ${{ inputs.maven-args }}
+        run: ./mvnw --no-transfer-progress -P release deploy -DskipTests=true ${{ inputs.maven-args }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
