@@ -77,7 +77,7 @@ jobs:
       - name: Publish to Maven Central
         id: publish-to-maven-central
         if: ${{ inputs.publish-maven-central }}
-        run: ./mvnw deploy -Drelease=true -DskipTests=true ${{ inputs.maven-args }}
+        run: ./mvnw --no-transfer-progress deploy -Drelease=true -DskipTests=true ${{ inputs.maven-args }}
 
       - name: JReleaser full-Release
         uses: jreleaser/release-action@v2
