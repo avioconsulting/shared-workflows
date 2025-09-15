@@ -104,10 +104,10 @@ jobs:
           JRELEASER_ANNOUNCE_SMTP_PASSWORD: ${{ secrets.JRELEASER_ANNOUNCE_SMTP_PASSWORD }}
           JRELEASER_ANNOUNCE_SMTP_USER: ${{ secrets.JRELEASER_ANNOUNCE_SMTP_USER }}
           JRELEASER_VERSION: 1.20.0
-        run: |
-          curl -L https://github.com/jreleaser/jreleaser/releases/download/v${{ env.JRELEASER_VERSION }}/jreleaser-native-${{ env.JRELEASER_VERSION }}-linux-x86_64.zip -o jreleaser.zip
+        run: |          
+          curl -L https://github.com/jreleaser/jreleaser/releases/download/v${{ env.JRELEASER_VERSION }}/jreleaser-standalone-${{ env.JRELEASER_VERSION }}-linux-x86_64.zip -o jreleaser.zip
           unzip jreleaser.zip -d ./jreleaser_install-tmp
-          mv ./jreleaser_install-tmp/jreleaser-native-${{ env.JRELEASER_VERSION }}-linux-x86_64 ./jreleaser_install
+          mv ./jreleaser_install-tmp/jreleaser-standalone-${{ env.JRELEASER_VERSION }}-linux-x86_64 ./jreleaser_install
           ls -R
           ./jreleaser_install/bin/jreleaser full-release
 
