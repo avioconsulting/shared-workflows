@@ -92,7 +92,7 @@ jobs:
           JRELEASER_UPLOAD_S3_ACCESS_KEY_ID: ${{ secrets.GCS_PUBLIC_ARTIFACT_ACCESSKEY }}
           JRELEASER_UPLOAD_S3_SECRET_KEY: ${{ secrets.GCS_PUBLIC_ARTIFACT_SECRET }}
           JRELEASER_UPLOAD_S3_REGION: us-east-2
-          JRELEASER_VERSION: 1.14.0
+          JRELEASER_VERSION: 1.23.0
         with:
           version: ${{ env.JRELEASER_VERSION }}
           arguments: full-release
