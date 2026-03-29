@@ -35,6 +35,9 @@ env:
 jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
+    env:
+      AVIO_REPO_USER: ${{ secrets.JFROG_USER }}
+      AVIO_REPO_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
     # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
     steps:
@@ -49,6 +52,9 @@ jobs:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
           cache: maven
+          server-id: avio-releases
+          server-username: AVIO_REPO_USER
+          server-password: AVIO_REPO_PASSWORD
 
       - name: Increment Version
         run: |
