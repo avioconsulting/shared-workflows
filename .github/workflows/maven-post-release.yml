@@ -31,6 +31,7 @@ on:
 env:
   is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
   is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   Prepare-Next-Snapshot:

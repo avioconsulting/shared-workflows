@@ -17,6 +17,9 @@ on:
       app-version:
         description: The application version
         value: ${{ jobs.test.outputs.version }}
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test:
     name: "Build and Publish artifacts"
