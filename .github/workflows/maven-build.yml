@@ -36,6 +36,10 @@ on:
       app-version:
         description: The application version
         value: ${{ jobs.Build-With-Maven.outputs.version }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   Build-With-Maven:
     runs-on: ubuntu-latest
