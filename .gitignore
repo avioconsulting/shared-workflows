@@ -199,3 +199,6 @@ reports/
 # End of https://www.gitignore.io/api/mule,java,eclipse,intellij
 
 ssl/
+
+research_notes/**
+.vscode/**

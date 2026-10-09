@@ -93,8 +93,11 @@ jobs:
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
-        if: ${{ inputs.include-test-results }}
+        if: ${{ !cancelled() && inputs.include-test-results }}
         with:
+          check_run: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+          comment_mode: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'always' || 'off' }}
+          job_summary: true
           files: |
             target/surefire-reports/*.xml
             */target/surefire-reports/*.xml
