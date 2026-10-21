@@ -326,6 +326,41 @@ Distribution Management section -
 * Only runs on the `main` branch
 * Executes initial setup, then runs JReleaser, and captures the JReleaser output.
 
+The Gradle release workflow uses JReleaser 1.26.0 and the Central Publisher Portal.
+Consumers must migrate their `jreleaser.yml` deployer from `nexus2` to
+`mavenCentral`, for example:
+
+```yaml
+deploy:
+  maven:
+    mavenCentral:
+      maven-central:
+        active: RELEASE
+        url: https://central.sonatype.com/api/v1/publisher
+        applyMavenCentralRules: true
+        stagingRepositories:
+          - build/staging-deploy
+```
+
+Use the actual staging directory (or directories) produced by the consuming
+project's `./gradlew publish`. Remove Nexus2-only `closeRepository`,
+`releaseRepository`, and `snapshotUrl` settings. This configuration publishes
+releases only; snapshot publication requires a separate snapshot repository.
+
+The existing `OSSRH_USERNAME` and `OSSRH_PASSWORD` organization secret names are
+retained, but their values **must be Central Portal user-token credentials**.
+They are exposed as `JRELEASER_MAVENCENTRAL_USERNAME` and
+`JRELEASER_MAVENCENTRAL_PASSWORD`; legacy OSSRH tokens will not work.
+
+For testing on a non-main branch, pass `dry-run: true`. This stages artifacts
+locally and runs `full-release --dry-run`: it does not publish to Central or
+create a GitHub release. Pull requests remain excluded. Use a non-SNAPSHOT
+`app-version` and matching Gradle version override to exercise the release-only
+deployer, for example `gradle-args: '-Dversion.semver=2.0.0-centralmigrationtest'`
+for projects using the semver plugin. Signing and Portal credentials are still
+required for CI validation. A dry run does not prove server-side authentication
+or publication succeeds.
+
 | Variable            | Description                                                         | Type   | Required | Default       | Input/Output |
 |---------------------|---------------------------------------------------------------------|--------|----------|---------------|--------------|
 | `app-version`       | Application version to release                                      | string | true     | n/a           | input        |
@@ -333,6 +368,10 @@ Distribution Management section -
 | `java-version`      | The Java Version to use                                             | string | false    | 8             | input        |
 | `main-branch`       | Main branch name, allows override for repos that still use ‘master’ | string | false    | main          | input        |
 | `gradle-args`       | Gradle arguments appended to gradle calls                           | string | false    | n/a           | input        |
+
+Additional input: `dry-run` (boolean, optional, default `false`). Real releases
+require an exact match of `refs/heads/<main-branch>`; dry runs may run on other
+branches without relaxing the real-release guard.
 
 Gradle release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
