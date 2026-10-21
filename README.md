@@ -347,8 +347,8 @@ project's `./gradlew publish`. Remove Nexus2-only `closeRepository`,
 `releaseRepository`, and `snapshotUrl` settings. This configuration publishes
 releases only; snapshot publication requires a separate snapshot repository.
 
-The existing `OSSRH_USERNAME` and `OSSRH_PASSWORD` organization secret names are
-retained, but their values **must be Central Portal user-token credentials**.
+The `MAVEN_PUBLISH_USERNAME` and `MAVEN_PUBLISH_PASSWORD` organization secrets
+must contain **Central Portal user-token credentials**, as in Maven publishing.
 They are exposed as `JRELEASER_MAVENCENTRAL_USERNAME` and
 `JRELEASER_MAVENCENTRAL_PASSWORD`; legacy OSSRH tokens will not work.
 
@@ -378,10 +378,8 @@ Gradle release workflow requires the following [Organization Secrets](https://gi
 - JRELEASER_GPG_PASSPHRASE
 - JRELEASER_GPG_PUBLIC_KEY
 - JRELEASER_GPG_SECRET_KEY
-- MAVEN_GPG_PASSPHRASE
-- MAVEN_GPG_PRIVATE_KEY
-- OSSRH_PASSWORD
-- OSSRH_USERNAME
+- MAVEN_PUBLISH_PASSWORD
+- MAVEN_PUBLISH_USERNAME
 
 ### `gradle-post-release.yml`
 
