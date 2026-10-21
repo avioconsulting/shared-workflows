@@ -7,6 +7,11 @@ on:
         description: Application version to release
         required: true
         type: string
+      dry-run:
+        description: Validate the full release without publishing artifacts or creating a GitHub release
+        required: false
+        type: boolean
+        default: false
       java-distribution:
         description: The Java Distribution to use, default 'adopt-hotspot'
         required: false
@@ -28,22 +33,21 @@ on:
         default: main
 
 env:
-  is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   Release:
     # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
-    if: ${{ github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
+    if: ${{ github.event_name != 'pull_request' && (inputs.dry-run || github.ref == format('refs/heads/{0}', inputs.main-branch)) }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: '0'
           submodules: 'recursive'
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
@@ -53,25 +57,26 @@ jobs:
         run: ./gradlew publish ${{ inputs.gradle-args }}
 
       - name: JReleaser full-Release
-        uses: jreleaser/release-action@v2
+        uses: jreleaser/release-action@2.5.0
         env:
           JRELEASER_PROJECT_VERSION: ${{ inputs.app-version }}
           JRELEASER_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JRELEASER_GPG_PASSPHRASE: ${{ secrets.JRELEASER_GPG_PASSPHRASE }}
           JRELEASER_GPG_PUBLIC_KEY: ${{ secrets.JRELEASER_GPG_PUBLIC_KEY }}
           JRELEASER_GPG_SECRET_KEY: ${{ secrets.JRELEASER_GPG_SECRET_KEY }}
-          JRELEASER_NEXUS2_MAVEN_CENTRAL_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          JRELEASER_NEXUS2_MAVEN_CENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-          JRELEASER_VERSION: 1.6.0
+          # Existing organization secret names are retained, but values must be
+          # Central Portal user-token credentials, not retired OSSRH credentials.
+          JRELEASER_MAVENCENTRAL_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          JRELEASER_MAVENCENTRAL_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
         with:
-          version: ${{ env.JRELEASER_VERSION }}
-          arguments: full-release
+          version: '1.26.0'
+          arguments: ${{ inputs.dry-run && 'full-release --dry-run' || 'full-release' }}
 
       - name: JReleaser release output
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: jreleaser-release
+          name: ${{ inputs.dry-run && 'jreleaser-dry-run' || 'jreleaser-release' }}
           path: |
             out/jreleaser/trace.log
             out/jreleaser/output.properties
