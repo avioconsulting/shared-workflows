@@ -375,11 +375,16 @@ branches without relaxing the real-release guard.
 
 Gradle release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
-- JRELEASER_GPG_PASSPHRASE
-- JRELEASER_GPG_PUBLIC_KEY
-- JRELEASER_GPG_SECRET_KEY
+- MAVEN_GPG_PASSPHRASE
+- MAVEN_GPG_PUBLIC_KEY
+- MAVEN_GPG_PRIVATE_KEY
 - MAVEN_PUBLISH_PASSWORD
 - MAVEN_PUBLISH_USERNAME
+
+The Maven signing secrets are mapped to JReleaser's `JRELEASER_GPG_*`
+environment variables. The private key must be an exported PGP secret key in a
+format supported by JReleaser's in-memory signer (ASCII-armored or Base64-encoded),
+not a filesystem path. No organization secret values need to be copied or exposed.
 
 ### `gradle-post-release.yml`
 
