@@ -46,13 +46,13 @@ jobs:
       version: ${{ steps.set-version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: '0'
           submodules: 'recursive'
 
       - name: Set up JDK for build and unit test
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
@@ -79,7 +79,7 @@ jobs:
         run: ./mvnw -P release deploy -DskipTests=true ${{ inputs.maven-args }}
 
       - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+        uses: EnricoMi/publish-unit-test-result-action@v2.25.0
         if: ${{ !cancelled() && inputs.include-test-results }}
         with:
           check_run: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
@@ -90,7 +90,7 @@ jobs:
             */target/surefire-reports/*.xml
 
       - name: Upload Build Artifacts (JARs and Maven Staging Repo)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
           path: |
