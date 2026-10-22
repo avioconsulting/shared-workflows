@@ -63,8 +63,8 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven
           server-id: mulesoft-ee-releases
-          server-username: MULE_EE_USERNAME
-          server-password: MULE_EE_PASSWORD
+          server-username-env-var: MULE_EE_USERNAME
+          server-password-env-var: MULE_EE_PASSWORD
 
       - name: Set up JDK for build and unit test
         uses: actions/setup-java@v6
