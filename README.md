@@ -3,6 +3,50 @@ A repository to store the Github Actions shared workflows
 
 ## Adding workflows to a new project
 
+### AVIO Maven builds (`avio-releases`)
+
+Use `maven-build.yml@avio-releases` for builds that consume AVIO Artifactory
+repositories. Pass `secrets: inherit` to expose `JFROG_USER` and `JFROG_PASSWORD`;
+the workflow maps them to `AVIO_REPO_USER` and `AVIO_REPO_PASSWORD` for Maven.
+The `main` variant instead supports direct MuleSoft EE credentials.
+
+The AVIO build supports these optional inputs:
+
+- `maven-settings-file`: a checked-in settings XML file copied to
+  `~/.m2/settings.xml` after Java setup. Use `${env.AVIO_REPO_USER}` and
+  `${env.AVIO_REPO_PASSWORD}` references, never literal credentials. This is also
+  available to nested Maven processes. Omit it to use the generated
+  `avio-releases` server configuration. Configure any required Mule EE mirror in
+  this file; the legacy `include-mule-ee-repo` input does not configure it on
+  this branch.
+- `diagnostics-path`: files/globs uploaded as `build-diagnostics`, even after a
+  failed build, with seven-day retention. Callers must sanitize these files
+  before upload. Omit it to disable diagnostic uploads.
+- `test-results-comments`: defaults to `true`; set `false` for check/summary-only
+  reporting. Reporting skips builds without `TEST-*.xml` files under `target`.
+
+The build restores Maven dependencies, clears cached failed-resolution markers,
+and saves the enriched cache after compilation even if verification fails.
+This lets retries discover newly published artifacts in nested Maven processes.
+
+```yaml
+jobs:
+  Build-Maven:
+    uses: avioconsulting/shared-workflows/.github/workflows/maven-build.yml@avio-releases
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    secrets: inherit
+    with:
+      java-distribution: temurin
+      java-version: '17'
+      maven-args: --update-snapshots
+      maven-settings-file: .github/maven/settings.xml
+      diagnostics-path: target/munit-diagnostics/*.log
+      test-results-comments: false
+```
+
 ### Maven Java Build
 
 Create/Add a `.github/workflows/build.yml` file within the project.
@@ -305,4 +349,3 @@ Gradle release workflow requires the following [Organization Secrets](https://gi
 | `main-branch`       | Main branch name, allows override for repos that still use ‘master’               | string  | false    | main                              | input        |
 | `version-project`   | For use with multi-module projects, this is used to determine application version | boolean | false    | n/a                               | input        |
 | `pr-reviewers`      | Users to be included in the post-release pull request                             | string  | false    | adesjardin, manikmagar, kkingavio | input        |
-
