@@ -69,10 +69,10 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven
           server-id: ossrh
-          server-username: OSSRH_USERNAME
-          server-password: OSSRH_PASSWORD
+          server-username-env-var: OSSRH_USERNAME
+          server-password-env-var: OSSRH_PASSWORD
           gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-          gpg-passphrase:  MAVEN_GPG_PASSPHRASE
+          gpg-passphrase-env-var: MAVEN_GPG_PASSPHRASE
 
       - name: Set up JDK for maven deployment credentials
         uses: actions/setup-java@v6
@@ -82,10 +82,10 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven
           server-id: avio-releases
-          server-username: AVIO_REPO_USER
-          server-password: AVIO_REPO_PASSWORD
+          server-username-env-var: AVIO_REPO_USER
+          server-password-env-var: AVIO_REPO_PASSWORD
 #          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
-#          gpg-passphrase:  MAVEN_GPG_PASSPHRASE
+#          gpg-passphrase-env-var: MAVEN_GPG_PASSPHRASE
 
       - name: Publish to Maven Central
         id: publish-to-maven-central
