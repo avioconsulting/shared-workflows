@@ -23,6 +23,21 @@ on:
         required: false
         type: boolean
         default: true
+      test-results-comments:
+        description: Allow test result comments on pull requests
+        required: false
+        type: boolean
+        default: true
+      maven-settings-file:
+        description: Optional settings.xml path in the caller repository; credentials must use environment variables
+        required: false
+        type: string
+        default: ''
+      diagnostics-path:
+        description: Optional path or glob for caller-sanitized diagnostic files to upload, including on failure
+        required: false
+        type: string
+        default: ''
       maven-args:
         description: Maven arguments appended to maven calls
         required: false
@@ -56,10 +71,34 @@ jobs:
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
-          cache: maven
           server-id: avio-releases
           server-username-env-var: AVIO_REPO_USER
           server-password-env-var: AVIO_REPO_PASSWORD
+
+      - name: Restore Maven dependencies
+        id: maven-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-shared-maven-${{ inputs.java-distribution }}-${{ inputs.java-version }}-v1-${{ hashFiles('**/pom.xml', '**/archetype.properties', inputs.maven-settings-file) }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ runner.os }}-shared-maven-${{ inputs.java-distribution }}-${{ inputs.java-version }}-v1-${{ hashFiles('**/pom.xml', '**/archetype.properties', inputs.maven-settings-file) }}-
+            ${{ runner.os }}-shared-maven-${{ inputs.java-distribution }}-${{ inputs.java-version }}-v1-
+
+      - name: Clear cached Maven resolution failures
+        # Nested Maven invocations do not inherit the outer command's -U flag.
+        run: |
+          if [ -d "$HOME/.m2/repository" ]; then
+            find "$HOME/.m2/repository" -type f -name '*.lastUpdated' -print -delete
+          fi
+
+      - name: Configure Maven repositories
+        if: ${{ inputs.maven-settings-file != '' }}
+        env:
+          MAVEN_SETTINGS_FILE: ${{ inputs.maven-settings-file }}
+        run: |
+          mkdir -p "$HOME/.m2"
+          install -m 600 "$MAVEN_SETTINGS_FILE" "$HOME/.m2/settings.xml"
 
       - name: Set Version
         id: set-version
@@ -69,6 +108,7 @@ jobs:
         run: echo "Version ${{ steps.set-version.outputs.version }}"
 
       - name: Compile
+        id: compile
         run: ./mvnw compile ${{ inputs.maven-args }}
 
       - name: Verify
@@ -80,14 +120,28 @@ jobs:
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2.25.0
-        if: ${{ !cancelled() && inputs.include-test-results }}
+        if: ${{ !cancelled() && inputs.include-test-results && hashFiles('**/target/**/TEST-*.xml') != '' }}
         with:
           check_run: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-          comment_mode: ${{ github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'always' || 'off' }}
+          comment_mode: ${{ inputs.test-results-comments && github.actor != 'dependabot[bot]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && 'always' || 'off' }}
           job_summary: true
-          files: |
-            target/surefire-reports/*.xml
-            */target/surefire-reports/*.xml
+          files: '**/target/**/TEST-*.xml'
+
+      - name: Save Maven dependencies even after verification failure
+        if: always() && steps.compile.outcome == 'success' && steps.maven-cache.outcome == 'success' && steps.maven-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.m2/repository
+          key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+
+      - name: Upload sanitized build diagnostics
+        if: ${{ always() && inputs.diagnostics-path != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-diagnostics
+          path: ${{ inputs.diagnostics-path }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload Build Artifacts (JARs and Maven Staging Repo)
         uses: actions/upload-artifact@v7
