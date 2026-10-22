@@ -345,12 +345,22 @@ deploy:
 Use the actual staging directory (or directories) produced by the consuming
 project's `./gradlew publish`. Remove Nexus2-only `closeRepository`,
 `releaseRepository`, and `snapshotUrl` settings. This configuration publishes
-releases only; snapshot publication requires a separate snapshot repository.
+releases only; snapshot publication requires a separate snapshot deployer.
+
+For JReleaser-managed snapshots, consumers may add a `nexus2` deployer with
+`active: SNAPSHOT`, `snapshotSupported: true`, and `snapshotUrl` pointing to
+`https://central.sonatype.com/repository/maven-snapshots/`. Its `url` may use the
+same URL. For SNAPSHOT versions this adapter uses Maven repository PUT requests,
+not legacy OSSRH staging APIs. Keep the `mavenCentral` deployer release-only.
+The namespace must have snapshots enabled in Central Portal.
 
 The `MAVEN_PUBLISH_USERNAME` and `MAVEN_PUBLISH_PASSWORD` organization secrets
 must contain **Central Portal user-token credentials**, as in Maven publishing.
 They are exposed as `JRELEASER_MAVENCENTRAL_USERNAME` and
 `JRELEASER_MAVENCENTRAL_PASSWORD`; legacy OSSRH tokens will not work.
+The same credentials are also exposed as `JRELEASER_NEXUS2_USERNAME` and
+`JRELEASER_NEXUS2_PASSWORD` for snapshot deployers. Normal publishing remains
+restricted to the exact configured main branch.
 
 For testing on a non-main branch, pass `dry-run: true`. This stages artifacts
 locally and runs `full-release --dry-run`: it does not publish to Central or
