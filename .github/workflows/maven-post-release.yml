@@ -39,13 +39,13 @@ jobs:
     # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
     if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: '0'
           submodules: 'recursive'
 
       - name: Set up JDK
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: ${{ inputs.java-distribution }}
           java-version: ${{ inputs.java-version }}
@@ -60,7 +60,7 @@ jobs:
         run: echo version=$(./mvnw --no-transfer-progress -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
           branch: "chore/v${{ steps.set-new-version.outputs.version }}"
           commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
