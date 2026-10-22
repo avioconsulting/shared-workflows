@@ -56,7 +56,9 @@ jobs:
           cache: gradle
 
       - name: Increment Version
-        run: ./gradlew incrementPatch -Dversion.prerelease=SNAPSHOT
+        # Semver increment tasks access Project at execution time and cannot use
+        # Gradle's configuration cache, even when enabled by the calling project.
+        run: ./gradlew --no-configuration-cache incrementPatch -Dversion.prerelease=SNAPSHOT
 
       # This uses a conditional to build 2 different echo commands
       # The first is for just a regular -> ./gradlew properties call
@@ -66,7 +68,7 @@ jobs:
         run: ${{ inputs.version-project == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ inputs.version-project }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
 
       - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v4
+        uses: peter-evans/create-pull-request@v8.1.1
         with:
           branch: "chore/v${{ steps.set-new-version.outputs.version }}"
           commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
