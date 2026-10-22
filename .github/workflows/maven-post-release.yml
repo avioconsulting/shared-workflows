@@ -53,8 +53,8 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven
           server-id: avio-releases
-          server-username: AVIO_REPO_USER
-          server-password: AVIO_REPO_PASSWORD
+          server-username-env-var: AVIO_REPO_USER
+          server-password-env-var: AVIO_REPO_PASSWORD
 
       - name: Increment Version
         run: |
