@@ -1,6 +1,204 @@
 # Github Actions - Shared Workflows
 A repository to store the Github Actions shared workflows
 
+## AI framework maintenance
+
+Two reusable workflows use the official [Claude Code Action](https://github.com/anthropics/claude-code-action/tree/main/examples).
+A third provides an alternative triage implementation using [GitHub Agentic Workflows (gh-aw)](https://github.github.com/gh-aw/):
+
+| Workflow | Trigger in the calling repository | Result |
+| --- | --- | --- |
+| `ai-triage.yml` | Human-authored issue opened | Labels and a concise triage comment |
+| `ai-assistant.yml` | New conversation comment mentioning `@claude` | The action's normal analysis, fix, or review interaction |
+| `ai-triage-gh-aw.lock.yml` | Human-authored issue opened | Labels and a workflow-managed triage comment, published through safe outputs |
+
+Choose one triage implementation per calling repository.
+
+### Setup
+
+1. Create a dedicated API key in the [Anthropic Console](https://console.anthropic.com/)
+   and configure appropriate API spending limits.
+2. In the **calling framework repository**, open **Settings → Secrets and variables
+   → Actions → New repository secret**. Store the key as `ANTHROPIC_API_KEY`.
+   Alternatively, create an organization-level Actions secret with the same name
+   and grant the calling repositories access. Pass the secret explicitly as shown
+   below; the reusable workflow declares the secret but does not store its value.
+3. Precreate `bug`, `enhancement`, `question`, `ai-triaged`, and `need information`
+   labels in the calling repository. For custom classifications, create those
+   labels and describe their meaning in repository guidance or label descriptions.
+4. Add repository guidance in `AGENTS.md` and a `CLAUDE.md` that imports `@AGENTS.md`.
+   Keep framework-specific triage requirements in that guidance and issue templates.
+
+All three workflows are configured for **Anthropic API billing**, charged to the
+organization associated with the API key. Claude Pro/Max subscriptions do not fund
+this API usage. GitHub Actions runner usage is accounted for separately.
+
+The shared repository must be accessible to the caller. The examples use `@main`;
+use the branch containing these workflows for a pilot, and a reviewed SHA for rollout.
+
+Create `.github/workflows/ai-triage.yml` in the framework repository:
+
+```yaml
+name: AI Issue Triage
+on:
+  issues:
+    types: [opened]
+jobs:
+  Triage:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@main
+    permissions:
+      contents: read
+      issues: write
+    with:
+      triage-labels: bug,enhancement,question
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Create `.github/workflows/ai-assistant.yml` in the framework repository:
+
+```yaml
+name: AI Maintenance Assistant
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  Assistant:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    # with:
+    #   enabled: false
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+### Inputs and execution limits
+
+All three workflows accept an optional `model` input, defaulting to
+`claude-sonnet-4-5-20250929`. Pass named secrets, not `secrets: inherit`.
+
+| Workflow | Additional inputs | Max turns | Claude CLI budget | Configured timeout |
+| --- | --- | --- | --- | --- |
+| `ai-triage.yml` | `triage-labels`: comma-separated classification labels | 12 | $1 | 10 minutes |
+| `ai-assistant.yml` | `enabled`: boolean, default `true` | 30 | $6 | 35 minutes |
+| `ai-triage-gh-aw.lock.yml` | No additional user-facing inputs; labels configured in the Markdown source | 12 | $1 | 10 minutes for agent execution |
+
+The direct-triage caller above explicitly sets `triage-labels` to
+`bug,enhancement,question`. The workflow's current default also includes
+`ai-triaged` and `"need information"`; these are operational labels, so keep them
+out of the classification input. The prompt handles those operational labels
+separately. All labels must already exist; triage skips missing labels.
+
+Only the assistant supports `enabled: false`. Disable either triage implementation
+by disabling its calling workflow in GitHub Actions or gating the caller job with
+an `if` condition. CLI budgets apply to individual agent invocations, not aggregate
+workflow, repository, or organization spending. Configure API spending limits
+separately; gh-aw can run additional model-backed processing outside the main
+triage invocation.
+
+### Triage behavior
+
+Both triage prompts use repository guidance and existing label descriptions, and
+request the following behavior:
+
+- Prefer one supported classification, preserve existing labels, and abstain when
+  the classification is unclear.
+- Request `need information` only when missing details block the next step.
+  Assess bugs, enhancements, and questions differently; ask at most three focused
+  questions rather than requiring reproduction steps for every issue.
+- Search open and closed issues using at most two targeted searches and inspect
+  at most three strong duplicate candidates. Link potential duplicates with an
+  explanation; do not close issues or label them as duplicates.
+- Produce a comment normally 100–180 words, capped at 250, with a summary,
+  necessary clarification, supported duplicate links, and one concrete next step.
+- Skip closed issues and avoid source changes, project-code execution, and fixes.
+
+Direct triage identifies its previous comment using the workflow bot's identity
+and `<!-- ai-issue-triage:v1 -->` marker. On a rerun it skips another comment and
+completes only justified missing label additions. It adds `ai-triaged` after
+posting or confirming an existing triage comment. The gh-aw version instead
+submits an updated comment for automatic replacement and requests additive labels
+through safe outputs, which are processed after the agent finishes.
+
+### Commands and pilot boundaries
+
+Use comments such as `@claude analyze why this fails`, `@claude fix this bug`, or
+`@claude review this PR`. These are task directions, not a custom command parser.
+The assistant uses the action's built-in context, write-access checks, bot checks,
+comments, and branch handling. Any mention can trigger it, including quoted examples.
+Only newly created main-conversation comments are selected by the caller above.
+Analyze and review requests are instructed to avoid file changes and project-code
+execution; fix requests may change code and run relevant checks. Reviews are
+limited to five high-confidence actionable findings.
+
+Fixes use the action's normal branch and PR-creation-link behavior; this wrapper
+does not automatically open a draft PR. Follow the returned link to open the PR,
+then let existing CI and human review gate merging. Review instructions request
+advisory comments only; they are not a separate policy-enforcement layer.
+
+**Pilot scope:** try this on a trusted same-repository issue/PR first. There are no
+custom authorization scripts, structured-output publishers, stale-head guards,
+separate publication credentials, daily quotas, or isolated test runners. Claude
+can use tools and execute project commands in the model-authenticated job.
+Triage allows outside contributors through `allowed_non_write_users` and gives
+Claude issue-write access directly, as in the official example. Tool/label limits
+are instructions and permission configuration, not an untrusted-code sandbox.
+Monitor API usage and use the disabling options described above.
+
+To prove the integration, open one issue, request analysis and a fix, open the PR
+using Claude's link, and request a review. Confirm comments, labels, branch output,
+normal CI, and built-in authorization on the pilot. Live GitHub/model execution
+is not verified by local workflow linting.
+
+### gh-aw triage comparison
+
+[`ai-triage-gh-aw.md`](.github/workflows/ai-triage-gh-aw.md) implements the same
+triage task with Claude and the main-agent limits listed above. Unlike the
+direct-action version, its agent has read-only
+GitHub access; gh-aw publishes through built-in safe outputs with a fixed label
+allowlist and replacement of its older triage comment. No custom scripts are used.
+
+The Markdown is the editable source. GitHub runs the generated
+[`ai-triage-gh-aw.lock.yml`](.github/workflows/ai-triage-gh-aw.lock.yml).
+Use gh-aw v0.92.0 to recompile source changes:
+
+```sh
+gh aw compile ai-triage-gh-aw
+```
+
+Commit both the Markdown source and regenerated lock workflow.
+`.github/aw/actions-lock.json` records the compiler's action pin;
+`.gitattributes` marks generated workflow files. Do not hand-edit the lock workflow.
+
+To compare in a pilot, replace the triage caller job above with this job rather
+than running both against the same issue:
+
+```yaml
+  Triage:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-triage-gh-aw.lock.yml@main
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+      pull-requests: write
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+The `model` input is supported; there is no `enabled` or `triage-labels` input.
+To customize labels, update both the `safe-outputs.add-labels.allowed` list and
+the triage instructions in the Markdown source, then recompile. Keep operational
+and classification label meanings distinct. All additions are requested in one
+`add_labels` call, and one `add_comment` call submits the complete triage comment.
+
+The additional caller permissions accommodate gh-aw's generated status and
+safe-output jobs, not its read-only agent. Use `gh aw compile` for compiler
+validation. Older actionlint versions may not understand generated constructs
+such as `concurrency.queue` and `job.workflow_*`.
+
 ## Adding workflows to a new project
 
 ### Maven Java Build
