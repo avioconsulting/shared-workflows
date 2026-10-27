@@ -20,6 +20,7 @@ engine:
   id: claude
   model: ${{ inputs.model }}
   args: ["--max-budget-usd", "1"]
+inlined-imports: true
 max-turns: 12
 timeout-minutes: 10
 network:
