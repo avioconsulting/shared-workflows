@@ -7,7 +7,8 @@ on:
         description: Claude model to use
         required: false
         type: string
-        default: claude-haiku-5-5
+        # claude-haiku-5-5 pricing is not available in the github catalog, so using that fails the workflow
+        default: claude-haiku-4-5
     secrets:
       ANTHROPIC_API_KEY:
         required: true
