@@ -75,7 +75,6 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-      actions: read
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -167,7 +166,7 @@ own token permissions:
 | Fix | Read | Read | Read |
 | PublishFix | Write | Write | Write |
 
-PublishFix also requests `actions: read` for artifact access. Both agents
+Same-run artifact downloads do not require an additional `actions: read` grant. Both agents
 use explicit automation prompts, avoiding interactive branch setup. Checkout
 credentials remain unpersisted. Like direct triage, Analyze receives `GH_TOKEN`
 and posts findings directly using `gh issue comment`. Its instructions permit
@@ -185,16 +184,18 @@ is handled by subsequent workflow steps:
    fix, and runs relevant checks. It is instructed to leave changes uncommitted
    locally rather than create branches, push, open PRs, or post comments itself.
    The agent job has only read permissions on GitHub.
-2. Claude writes `fix-pr-metadata.json` (title and commit message) and
+2. Claude writes `fix-pr-metadata.json` (status, plus title and commit message for
+   `ready`) and
    `fix-pr-body.md` under `runner.temp`, outside the checkout. The requested body
    includes the change summary, tests and actual check results, limitations, and
    `Fixes #<issue-number>`.
 3. After a successful agent conclusion, the job uploads a binary-capable patch,
    the checked-out base SHA, and the metadata as a one-day artifact. The separate
    PublishFix job checks out a clean default branch and downloads that handoff.
-   An `actions/github-script` step
-   validates nonempty single-line title/commit-message fields, a title of at most
-   256 characters, and a nonempty body before publication. Publication stops if
+   An `actions/github-script` step requires status `ready`, `needs_clarification`,
+   or `no_changes` and a nonempty body. Only `ready` proceeds to patch application
+   and PR creation, after validating nonempty single-line title/commit-message
+   fields and a title of at most 256 characters. PR publication stops if
    the default branch has moved since the agent's checkout; request a fresh fix.
    The publisher checks and applies the patch without running project code.
 4. `peter-evans/create-pull-request@v8.1.1` commits and pushes the changes to
@@ -203,6 +204,12 @@ is handled by subsequent workflow steps:
    on that branch. No new PR is created when there is no diff against the base.
 5. `gh issue comment` posts the PR link on the issue, or a no-diff message with the
    agent's explanation when no PR was created.
+
+For `needs_clarification`, the publisher posts the agent's questions and skips
+patch application and PR creation, even when the handoff contains partial edits.
+Reply with `@claude fix` and the answers to start a fresh run that reads the updated
+discussion. A plain reply does not trigger the assistant. For `no_changes`, the
+publisher posts the explanation without applying a patch or creating a PR.
 
 **CI triggering:** publication uses the repository's `GITHUB_TOKEN`. Its pushes
 and PR creation do not automatically trigger normal `push` or `pull_request`

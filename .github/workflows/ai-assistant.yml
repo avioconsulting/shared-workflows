@@ -146,9 +146,10 @@ jobs:
 
             ## PR metadata handoff
             Before finishing, always write these two UTF-8 files outside the repository:
-            - ${{ runner.temp }}/fix-pr-metadata.json: a JSON object with title and commit_message string fields. Both must be nonempty single-line descriptions of the actual fix; use a concise conventional commit message and a PR title no longer than 256 characters.
-            - ${{ runner.temp }}/fix-pr-body.md: a Markdown PR description containing a summary, the behavior changed, regression tests added, checks actually executed and their results, and remaining limitations. Include Fixes #${{ github.event.issue.number }}.
-            If no code change is needed or the fix is blocked, still write both files and explain why in the body. Do not claim checks passed unless they ran and passed.
+            - ${{ runner.temp }}/fix-pr-metadata.json: a JSON object with a required status field: ready, needs_clarification, or no_changes. Use ready only when the fix is complete enough for review. For ready, also include title and commit_message as nonempty single-line strings; use a concise conventional commit message and a PR title no longer than 256 characters.
+            - ${{ runner.temp }}/fix-pr-body.md: for ready, a Markdown PR description containing a summary, behavior changed, regression tests added, checks actually executed and their results, remaining limitations, and Fixes #${{ github.event.issue.number }}.
+            If the requested outcome is unclear or missing information blocks a fix, return needs_clarification and put focused questions in the body. For no_changes, explain why no fix is necessary in the body. Always write both files. The publisher will post that body without applying code changes or creating a PR for either of these statuses, even if local partial edits exist.
+            Do not claim checks passed unless they ran and passed. A run ends after posting questions; a maintainer must reply with a new @claude fix command to resume with the updated discussion.
             "
 
       - name: Prepare fix handoff
@@ -175,7 +176,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      actions: read
       contents: write
       issues: write
       pull-requests: write
@@ -201,6 +201,16 @@ jobs:
             const path = require('node:path');
             const metadata = JSON.parse(fs.readFileSync(
               path.join(process.env.RUNNER_TEMP, 'fix-handoff', 'fix-pr-metadata.json'), 'utf8'));
+            if (!['ready', 'needs_clarification', 'no_changes'].includes(metadata?.status)) {
+              throw new Error('Fix status must be ready, needs_clarification, or no_changes.');
+            }
+            const body = fs.readFileSync(
+              path.join(process.env.RUNNER_TEMP, 'fix-handoff', 'fix-pr-body.md'), 'utf8');
+            if (!body.trim()) {
+              throw new Error('Fix response body must not be empty.');
+            }
+            core.setOutput('status', metadata.status);
+            if (metadata.status !== 'ready') return;
             for (const field of ['title', 'commit_message']) {
               const value = metadata?.[field];
               if (typeof value !== 'string' || !value.trim() || /[\x00-\x1f\x7f]/.test(value)) {
@@ -210,15 +220,11 @@ jobs:
             if (metadata.title.trim().length > 256) {
               throw new Error('PR title must not exceed 256 characters.');
             }
-            const body = fs.readFileSync(
-              path.join(process.env.RUNNER_TEMP, 'fix-handoff', 'fix-pr-body.md'), 'utf8');
-            if (!body.trim()) {
-              throw new Error('PR body must not be empty.');
-            }
             core.setOutput('title', metadata.title.trim());
             core.setOutput('commit-message', metadata.commit_message.trim());
 
       - name: Apply fix without executing project code
+        if: steps.pr-metadata.outputs.status == 'ready'
         run: |
           test "$(git rev-parse HEAD)" = "$(cat "$RUNNER_TEMP/fix-handoff/base-sha")" || {
             echo 'Default branch changed during agent execution; request a fresh fix.' >&2
@@ -231,6 +237,7 @@ jobs:
 
       - name: Create fix pull request
         id: fix-pr
+        if: steps.pr-metadata.outputs.status == 'ready'
         uses: peter-evans/create-pull-request@v8.1.1
         with:
           branch: claude/issue-${{ github.event.issue.number }}
@@ -247,8 +254,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PR_URL: ${{ steps.fix-pr.outputs.pull-request-url }}
+          FIX_STATUS: ${{ steps.pr-metadata.outputs.status }}
         run: |
-          if [[ -n "$PR_URL" ]]; then
+          if [[ "$FIX_STATUS" == 'needs_clarification' ]]; then
+            printf 'Clarification needed before preparing a fix. Reply with @claude fix and your answers to start a new run.\n\n'
+            cat "$RUNNER_TEMP/fix-handoff/fix-pr-body.md"
+          elif [[ "$FIX_STATUS" == 'no_changes' ]]; then
+            printf 'No code changes proposed.\n\n'
+            cat "$RUNNER_TEMP/fix-handoff/fix-pr-body.md"
+          elif [[ -n "$PR_URL" ]]; then
             printf 'Fix PR: %s\n\nSee the PR description for changes, checks, and limitations.\n' "$PR_URL"
           else
             printf 'No fix PR was created because there is no diff against the base branch.\n\n'
