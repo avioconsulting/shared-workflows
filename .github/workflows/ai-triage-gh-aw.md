@@ -7,7 +7,7 @@ on:
         description: Claude model to use
         required: false
         type: string
-        default: claude-sonnet-4-5-20250929
+        default: claude-haiku-5-5
     secrets:
       ANTHROPIC_API_KEY:
         required: true
