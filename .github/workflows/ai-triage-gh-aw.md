@@ -31,6 +31,7 @@ tools:
     toolsets: [issues]
   edit: false
 safe-outputs:
+  report-failure-as-issue: false
   add-labels:
     allowed: [bug, enhancement, question, ai-triaged, "need information"]
     max: 1

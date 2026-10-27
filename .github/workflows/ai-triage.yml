@@ -18,12 +18,16 @@ on:
       ANTHROPIC_API_KEY:
         required: true
 
+concurrency:
+  group: ai-triage-${{ github.repository }}-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   Triage:
     if: >-
       github.event_name == 'issues' &&
-      github.event.action == 'opened' &&
-      github.event.issue.user.type == 'User'
+      ((github.event.action == 'opened' && github.event.issue.user.type == 'User') ||
+       (github.event.action == 'labeled' && github.event.label.name == 'needs-triage'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -43,7 +47,6 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
-          allowed_non_write_users: '*' # Required for issue triage workflow, if users without repo write access create issues
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
