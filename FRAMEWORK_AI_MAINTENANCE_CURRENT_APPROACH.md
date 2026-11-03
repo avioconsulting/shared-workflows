@@ -79,6 +79,8 @@ The Fix job has read-only GitHub permissions. A one-day artifact transfers its p
 
 The developer reviews the diff, tests, executed checks, and limitations on the draft PR. Complete missing verification on the **actual PR changes**. Required CI, branch protections, and human approval still govern merge; the agents cannot approve or merge. The framework's release owner handles documentation, release notes, versioning, and publication through its existing process.
 
+When available in the calling repository, a maintainer can assign a **GitHub Copilot agent as a PR code reviewer**. Review its findings, address actionable feedback, and request another review after substantive changes if useful. Copilot review supplements, rather than replaces, developer verification, required CI, and human approval; the maintainer remains responsible for the merge decision.
+
 **CI requires an explicit check.** The publisher uses `GITHUB_TOKEN`; pushes and PR creation with that token do not automatically trigger ordinary `push` or `pull_request` workflows. Before merge, verify the repository has a way to run required checks on this PR head. For `push` workflows, confirm branch filters include its `fix/`, `feat/`, or `chore/` prefix; `pull_request` branch filters match the base branch instead. PR comments do not trigger this assistant; for another AI fix, add a new `@claude fix` request on the issue, coordinating first with anyone editing the existing PR branch.
 
 ## Repository setup
