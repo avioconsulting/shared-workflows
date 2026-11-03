@@ -211,6 +211,9 @@ jobs:
             }
             core.setOutput('status', metadata.status);
             if (metadata.status !== 'ready') return;
+            const labels = new Set((context.payload.issue?.labels || []).map(label => label.name));
+            const prefix = labels.has('bug') ? 'fix' : labels.has('enhancement') ? 'feat' : 'chore';
+            core.setOutput('branch', `${prefix}/issue-${context.issue.number}`);
             for (const field of ['title', 'commit_message']) {
               const value = metadata?.[field];
               if (typeof value !== 'string' || !value.trim() || /[\x00-\x1f\x7f]/.test(value)) {
@@ -240,7 +243,7 @@ jobs:
         if: steps.pr-metadata.outputs.status == 'ready'
         uses: peter-evans/create-pull-request@v8.1.1
         with:
-          branch: claude/issue-${{ github.event.issue.number }}
+          branch: ${{ steps.pr-metadata.outputs.branch }}
           base: ${{ github.event.repository.default_branch }}
           commit-message: ${{ steps.pr-metadata.outputs.commit-message }}
           title: ${{ steps.pr-metadata.outputs.title }}

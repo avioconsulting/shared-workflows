@@ -199,9 +199,12 @@ is handled by subsequent workflow steps:
    the default branch has moved since the agent's checkout; request a fresh fix.
    The publisher checks and applies the patch without running project code.
 4. `peter-evans/create-pull-request@v8.1.1` commits and pushes the changes to
-   `claude/issue-<issue-number>` and opens a draft PR against the default branch,
-   using the agent-generated metadata. Subsequent runs can update the existing PR
-   on that branch. No new PR is created when there is no diff against the base.
+   `fix/issue-<issue-number>` for issues labeled `bug`, `feat/issue-<issue-number>`
+   for issues labeled `enhancement`, or `chore/issue-<issue-number>` otherwise,
+   and opens a draft PR against the default branch using the agent-generated metadata.
+   If both labels are present, `bug` takes precedence. Subsequent runs can update
+   the existing PR on the selected branch. No new PR is created when there is no
+   diff against the base.
 5. `gh issue comment` posts the PR link on the issue, or a no-diff message with the
    agent's explanation when no PR was created.
 
@@ -215,7 +218,10 @@ publisher posts the explanation without applying a patch or creating a PR.
 and PR creation do not automatically trigger normal `push` or `pull_request`
 GitHub Actions workflows. If automatic follow-on CI is required, the publication
 flow needs an appropriately scoped GitHub App token or PAT; the current reusable
-workflow does not expose a separate publication-token secret.
+workflow does not expose a separate publication-token secret. Also check that
+required `push` workflows' branch filters include the selected `fix/`, `feat/`,
+or `chore/` branch; `pull_request` branch filters match the base branch instead.
+Branch naming alone does not resolve the token limitation.
 
 ### Pilot boundaries
 
