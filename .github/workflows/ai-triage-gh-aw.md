@@ -1,5 +1,5 @@
 ---
-name: AI Issue Triage (gh-aw comparison)
+name: AI Issue Triage (POC_DO_NOT_USE gh-aw comparison)
 on:
   workflow_call:
     inputs:
