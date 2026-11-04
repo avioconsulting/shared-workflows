@@ -56,7 +56,7 @@ jobs:
             });
 
   Analyze:
-    needs: Assistant
+    needs: Acknowledge
     if: needs.Assistant.outputs.command == 'analyze'
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -111,7 +111,7 @@ jobs:
             "
 
   Fix:
-    needs: Assistant
+    needs: Acknowledge
     if: needs.Assistant.outputs.command == 'fix'
     runs-on: ubuntu-latest
     timeout-minutes: 35
