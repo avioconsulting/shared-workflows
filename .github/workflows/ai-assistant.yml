@@ -108,9 +108,48 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      # Claude can no longer run gh, so the discussion is fetched for it.
+      - name: Fetch issue discussion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
+            > "$RUNNER_TEMP/issue-discussion.md"
+
+      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
+      - name: Install sandbox
+        run: |
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      # The only command Claude may run. Root-owned and read-only, so Claude cannot
+      # change it. It refuses to run unless the sandbox is isolating it.
+      - name: Create verify.sh
+        run: |
+          if ls build.gradle* settings.gradle* >/dev/null 2>&1; then
+            cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew; cmd="$cmd --no-daemon build"
+          elif [[ -f pom.xml ]]; then
+            cmd=mvn; [[ -f mvnw ]] && cmd=./mvnw; cmd="$cmd -B verify"
+          else
+            echo '::error::No pom.xml or build.gradle(.kts) found.' >&2; exit 1
+          fi
+          cat > /tmp/verify.sh <<EOF
+          #!/usr/bin/env bash
+          set -uo pipefail
+          [[ -z "\${ANTHROPIC_API_KEY:-}" ]] || { echo "verify.sh: credentials visible, not sandboxed; refusing to run."; exit 97; }
+          curl -s -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
+          cd "$GITHUB_WORKSPACE"
+          $cmd 2>&1 | tail -n 200
+          EOF
+          sudo install -o root -g root -m 555 /tmp/verify.sh /usr/local/bin/verify.sh
+
       - name: Run Claude Code - Fix
         id: fix
         uses: anthropics/claude-code-action@v1
+        env:
+          # Keeps credentials out of every subprocess Claude starts.
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ github.token }}
@@ -118,15 +157,16 @@ jobs:
           prompt: |
             Implement the fix requested on issue #${{ github.event.issue.number }}
             in ${{ github.repository }}.
-            Read GITHUB_EVENT_PATH for the issue and triggering comment, and retrieve
-            the discussion with gh issue view ${{ github.event.issue.number }}
-            --repo ${{ github.repository }} --comments to include prior analysis.
+            Read GITHUB_EVENT_PATH for the issue and triggering comment, and
+            ${{ runner.temp }}/issue-discussion.md for the discussion, including prior analysis.
             Follow the fix and PR metadata instructions below.
           claude_args: |
             --model ${{ inputs.model }}
             --max-turns 30
             --max-budget-usd 6
-            --allowedTools "Bash,Read,Write,Edit,Glob,Grep"
+            --allowedTools "Bash(/usr/local/bin/verify.sh),Read,Write,Edit,Glob,Grep"
+            --disallowedTools "Read(//proc/**)"
+            --settings '{"sandbox": {"enabled": true, "allowUnsandboxedCommands": false, "network": {"allowedDomains": ["repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "plugins-artifacts.gradle.org", "services.gradle.org", "downloads.gradle.org", "avio.jfrog.io", "maven.anypoint.mulesoft.com"]}, "filesystem": {"allowWrite": ["~/.m2", "~/.gradle"]}}}'
             --add-dir "${{ runner.temp }}"
             --append-system-prompt "
             ## Role and shared rules
@@ -141,6 +181,8 @@ jobs:
             Make the smallest change that addresses the requested behavior.
             - Preserve public API and configuration compatibility unless the maintainer explicitly requests a change.
             - Add or update regression tests where appropriate; avoid unrelated refactoring.
+            - Build, test and package with exactly /usr/local/bin/verify.sh (no arguments); it is the only command you can run. Run it, fix failures, and run it again until it passes, up to 3 failing runs. Use status ready only if it passed on your final change.
+            - If verify.sh refuses to run because credentials are visible or the network is not restricted, stop and report it with status needs_clarification.
             - Leave the fix as local, uncommitted changes on the checked-out branch. Do not create or switch branches, commit, push, open a PR, or post comments. Subsequent workflow steps handle publication.
             - Keep generated build output and temporary files out of the changes to be committed.
 
