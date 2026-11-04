@@ -128,20 +128,41 @@ jobs:
       - name: Create verify.sh
         run: |
           if ls build.gradle* settings.gradle* >/dev/null 2>&1; then
-            cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew; cmd="$cmd --no-daemon build"
+            tool=gradle; cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew; cmd="$cmd --no-daemon build"
           elif [[ -f pom.xml ]]; then
-            cmd=mvn; [[ -f mvnw ]] && cmd=./mvnw; cmd="$cmd -B verify"
+            tool=maven; cmd=mvn; [[ -f mvnw ]] && cmd=./mvnw; cmd="$cmd -B verify"
           else
             echo '::error::No pom.xml or build.gradle(.kts) found.' >&2; exit 1
           fi
-          cat > /tmp/verify.sh <<EOF
-          #!/usr/bin/env bash
+          {
+            echo '#!/usr/bin/env bash'
+            printf 'TOOL=%q\nCMD=%q\nWORKSPACE=%q\n' "$tool" "$cmd" "$GITHUB_WORKSPACE"
+            cat <<'EOF'
           set -uo pipefail
-          [[ -z "\${ANTHROPIC_API_KEY:-}" ]] || { echo "verify.sh: credentials visible, not sandboxed; refusing to run."; exit 97; }
+          [[ -z "${ANTHROPIC_API_KEY:-}" ]] || { echo "verify.sh: credentials visible, not sandboxed; refusing to run."; exit 97; }
           curl -s -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
-          cd "$GITHUB_WORKSPACE"
-          $cmd 2>&1 | tail -n 200
+
+          # The sandbox only lets traffic out through a local proxy (HTTPS_PROXY).
+          # Java ignores that variable, so pass the proxy to every JVM and to Maven.
+          proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"
+          extra=()
+          if [[ -n "$proxy" ]]; then
+            hp="${proxy#*://}"; hp="${hp%%/*}"; hp="${hp##*@}"
+            host="${hp%:*}"; port="${hp##*:}"
+            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dhttp.proxyHost=$host -Dhttp.proxyPort=$port -Dhttps.proxyHost=$host -Dhttps.proxyPort=$port -Dhttp.nonProxyHosts=localhost|127.0.0.1"
+            if [[ "$TOOL" == maven ]]; then
+              gs="${TMPDIR:-/tmp}/sandbox-proxy-settings.xml"
+              printf '<settings><proxies>%s%s</proxies></settings>\n' \
+                "<proxy><id>sandbox-https</id><active>true</active><protocol>https</protocol><host>$host</host><port>$port</port></proxy>" \
+                "<proxy><id>sandbox-http</id><active>true</active><protocol>http</protocol><host>$host</host><port>$port</port></proxy>" > "$gs"
+              extra=(-gs "$gs")
+            fi
+          fi
+
+          cd "$WORKSPACE"
+          $CMD "${extra[@]}" 2>&1 | tail -n 200
           EOF
+          } > /tmp/verify.sh
           sudo install -o root -g root -m 555 /tmp/verify.sh /usr/local/bin/verify.sh
 
       - name: Run Claude Code - Fix
