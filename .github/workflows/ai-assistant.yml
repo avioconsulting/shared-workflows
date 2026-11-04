@@ -114,7 +114,7 @@ jobs:
     needs: Acknowledge
     if: needs.Assistant.outputs.command == 'fix'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     permissions:
       contents: read
       issues: read
@@ -141,44 +141,49 @@ jobs:
           sudo apt-get install -y -qq bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
-      # The only command Claude may run. Root-owned and read-only, so Claude cannot
-      # change it. It refuses to run unless the sandbox is isolating it.
-      - name: Create verify.sh
+      # Builds the unmodified default branch once, outside the sandbox and before
+      # Claude runs, to download every dependency and plugin into ~/.m2 / ~/.gradle.
+      # Claude's builds then run offline. The baseline result tells Claude whether
+      # the build was already failing before its change.
+      - name: Warm dependency cache (base branch)
+        id: build
         run: |
-          if ls build.gradle* settings.gradle* >/dev/null 2>&1; then
-            tool=gradle; cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew; cmd="$cmd --no-daemon build"
+          if compgen -G 'build.gradle*' >/dev/null || compgen -G 'settings.gradle*' >/dev/null; then
+            cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew
+            echo "verify=$cmd --no-daemon --offline build" >> "$GITHUB_OUTPUT"
+            warm="$cmd --no-daemon build"
           elif [[ -f pom.xml ]]; then
-            tool=maven; cmd=mvn; [[ -f mvnw ]] && cmd=./mvnw; cmd="$cmd -B verify"
+            cmd=mvn; [[ -f mvnw ]] && cmd=./mvnw
+            echo "verify=$cmd -B -o verify" >> "$GITHUB_OUTPUT"
+            warm="$cmd -B verify"
           else
             echo '::error::No pom.xml or build.gradle(.kts) found.' >&2; exit 1
           fi
+          set +e
+          $warm > "$RUNNER_TEMP/baseline.log" 2>&1
+          code=$?
+          {
+            if [[ $code -eq 0 ]]; then echo "Baseline build of the default branch PASSED."
+            else echo "Baseline build of the default branch FAILED before any change (exit $code). Last lines:"
+                 tail -n 60 "$RUNNER_TEMP/baseline.log"; fi
+          } > "$RUNNER_TEMP/baseline-build.txt"
+          [[ $code -eq 0 ]] || echo "::warning::Baseline build failed; see baseline-build.txt"
+
+      # The only command Claude may run. Root-owned and read-only, so Claude cannot
+      # change it. It builds offline and refuses to run unless the sandbox is isolating it.
+      - name: Create verify.sh
+        env:
+          VERIFY_CMD: ${{ steps.build.outputs.verify }}
+        run: |
           {
             echo '#!/usr/bin/env bash'
-            printf 'TOOL=%q\nCMD=%q\nWORKSPACE=%q\n' "$tool" "$cmd" "$GITHUB_WORKSPACE"
+            printf 'CMD=%q\nWORKSPACE=%q\n' "$VERIFY_CMD" "$GITHUB_WORKSPACE"
             cat <<'EOF'
           set -uo pipefail
           [[ -z "${ANTHROPIC_API_KEY:-}" ]] || { echo "verify.sh: credentials visible, not sandboxed; refusing to run."; exit 97; }
           curl -s -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
-
-          # The sandbox only lets traffic out through a local proxy (HTTPS_PROXY).
-          # Java ignores that variable, so pass the proxy to every JVM and to Maven.
-          proxy="${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-${http_proxy:-}}}}"
-          extra=()
-          if [[ -n "$proxy" ]]; then
-            hp="${proxy#*://}"; hp="${hp%%/*}"; hp="${hp##*@}"
-            host="${hp%:*}"; port="${hp##*:}"
-            export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:-} -Dhttp.proxyHost=$host -Dhttp.proxyPort=$port -Dhttps.proxyHost=$host -Dhttps.proxyPort=$port -Dhttp.nonProxyHosts=localhost|127.0.0.1"
-            if [[ "$TOOL" == maven ]]; then
-              gs="${TMPDIR:-/tmp}/sandbox-proxy-settings.xml"
-              printf '<settings><proxies>%s%s</proxies></settings>\n' \
-                "<proxy><id>sandbox-https</id><active>true</active><protocol>https</protocol><host>$host</host><port>$port</port></proxy>" \
-                "<proxy><id>sandbox-http</id><active>true</active><protocol>http</protocol><host>$host</host><port>$port</port></proxy>" > "$gs"
-              extra=(-gs "$gs")
-            fi
-          fi
-
           cd "$WORKSPACE"
-          $CMD "${extra[@]}" 2>&1 | tail -n 200
+          $CMD 2>&1 | tail -n 200
           EOF
           } > /tmp/verify.sh
           sudo install -o root -g root -m 555 /tmp/verify.sh /usr/local/bin/verify.sh
@@ -198,6 +203,7 @@ jobs:
             in ${{ github.repository }}.
             Read GITHUB_EVENT_PATH for the issue and triggering comment, and
             ${{ runner.temp }}/issue-discussion.md for the discussion, including prior analysis.
+            ${{ runner.temp }}/baseline-build.txt says whether the build passed before your change.
             Follow the fix and PR metadata instructions below.
           claude_args: |
             --model ${{ inputs.model }}
@@ -205,7 +211,7 @@ jobs:
             --max-budget-usd 6
             --allowedTools "Bash(/usr/local/bin/verify.sh),Read,Write,Edit,Glob,Grep"
             --disallowedTools "Read(//proc/**)"
-            --settings '{"sandbox": {"enabled": true, "allowUnsandboxedCommands": false, "network": {"allowedDomains": ["repo.maven.apache.org", "repo1.maven.org", "plugins.gradle.org", "plugins-artifacts.gradle.org", "services.gradle.org", "downloads.gradle.org", "avio.jfrog.io", "maven.anypoint.mulesoft.com"]}, "filesystem": {"allowWrite": ["~/.m2", "~/.gradle"]}}}'
+            --settings '{"sandbox": {"enabled": true, "allowUnsandboxedCommands": false, "network": {"allowedDomains": []}, "filesystem": {"allowWrite": ["~/.m2", "~/.gradle"]}}}'
             --add-dir "${{ runner.temp }}"
             --append-system-prompt "
             ## Role and shared rules
@@ -221,6 +227,8 @@ jobs:
             - Preserve public API and configuration compatibility unless the maintainer explicitly requests a change.
             - Add or update regression tests where appropriate; avoid unrelated refactoring.
             - Build, test and package with exactly /usr/local/bin/verify.sh (no arguments); it is the only command you can run. Run it, fix failures, and run it again until it passes, up to 3 failing runs. Use status ready only if it passed on your final change.
+            - verify.sh builds offline with no network: only dependencies and plugins the project already uses are available. Avoid new dependencies or version changes; if the fix truly needs one, stop and use status needs_clarification naming the dependency.
+            - If the baseline build already failed, do not try to fix unrelated failures; report them under limitations.
             - If verify.sh refuses to run because credentials are visible or the network is not restricted, stop and report it with status needs_clarification.
             - Leave the fix as local, uncommitted changes on the checked-out branch. Do not create or switch branches, commit, push, open a PR, or post comments. Subsequent workflow steps handle publication.
             - Keep generated build output and temporary files out of the changes to be committed.
