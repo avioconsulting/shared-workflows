@@ -37,6 +37,24 @@ jobs:
           fi
           echo "command=$command" >> "$GITHUB_OUTPUT"
 
+  Acknowledge:
+    needs: Assistant
+    if: needs.Assistant.outputs.command == 'analyze' || needs.Assistant.outputs.command == 'fix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: React to triggering comment
+        uses: actions/github-script@v9
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              ...context.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes',
+            });
+
   Analyze:
     needs: Assistant
     if: needs.Assistant.outputs.command == 'analyze'
