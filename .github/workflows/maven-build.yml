@@ -89,7 +89,7 @@ jobs:
 
       - name: Stage Maven Artifacts
         if: ${{ inputs.stage-maven-artifacts }}
-        run: ./mvnw --no-transfer-progress -P release deploy -DskipTests=true ${{ inputs.maven-args }}
+        run: ./mvnw --no-transfer-progress -P release deploy -DskipTests=true -DskipITs=true ${{ inputs.maven-args }}
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2.25.0
