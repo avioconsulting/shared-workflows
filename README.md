@@ -518,6 +518,11 @@ jobs:
 | `main-branch`           | Main branch name, allows override for repos that still use ‘master’ | string  | false    | main          | input        |
 | `maven-args`            | Maven arguments appended to maven calls                             | string  | false    | n/a           | input        |
 
+The Maven build runs `verify` with tests enabled by default. Subsequent staging
+and publishing deploys pass `-DskipTests=true -DskipITs=true` to skip Surefire
+and Failsafe respectively. Projects that start services for integration tests
+should use `skipITs` to skip that setup and teardown as well.
+
 Maven release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
 - JRELEASER_GPG_PASSPHRASE
