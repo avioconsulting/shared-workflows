@@ -3,6 +3,9 @@ name: Gradle Post Release Workflow
 on:
   workflow_call:
     inputs:
+      release-app-id:
+        description: Optional GitHub App ID for creating snapshot PRs with automatic CI
+        type: string
       app-version:
         description: Application version that was released
         required: true
@@ -32,6 +35,10 @@ on:
         type: string
         default: adesjardin, manikmagar, kkingavio
 
+    secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+
 env:
   is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
   is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
@@ -41,7 +48,7 @@ jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
     # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
-    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
+    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name == 'push' && github.ref == format('refs/heads/{0}', inputs.main-branch) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,16 +67,30 @@ jobs:
         # Gradle's configuration cache, even when enabled by the calling project.
         run: ./gradlew --no-configuration-cache incrementPatch -Dversion.prerelease=SNAPSHOT
 
-      # This uses a conditional to build 2 different echo commands
-      # The first is for just a regular -> ./gradlew properties call
-      # The second adds in a project reference -> ./gradlew version-project:properties
       - name: Set New Version Variable
         id: set-new-version
-        run: ${{ inputs.version-project == '' }}  && echo "version=$(./gradlew properties -q | grep "version:" | awk '{print $2}')" || echo "version=$(./gradlew ${{ inputs.version-project }}:properties -q | grep "version:" | awk '{print $2}')" >> $GITHUB_OUTPUT
+        env:
+          PROJECT: ${{ inputs.version-project }}
+        run: |
+          version=$(./gradlew "${PROJECT:+$PROJECT:}properties" -q | awk '/^version: / {print $2}')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-SNAPSHOT$ ]] || { echo 'Expected one next patch snapshot version'; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Mint repository-scoped release token
+        if: inputs.release-app-id != ''
+        id: release-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
+        with:
+          app-id: ${{ inputs.release-app-id }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8.1.1
         with:
+          token: ${{ steps.release-token.outputs.token || github.token }}
           branch: "chore/v${{ steps.set-new-version.outputs.version }}"
           commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
           title: "chore: Auto increment to v${{ steps.set-new-version.outputs.version }}"
