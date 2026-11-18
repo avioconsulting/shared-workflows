@@ -3,6 +3,9 @@ name: Maven Post Release Workflow
 on:
   workflow_call:
     inputs:
+      release-app-id:
+        description: Optional GitHub App ID for creating snapshot PRs with automatic CI
+        type: string
       app-version:
         description: Application version that was released
         required: true
@@ -28,6 +31,10 @@ on:
         type: string
         default: adesjardin, manikmagar, kkingavio
 
+    secrets:
+      RELEASE_APP_PRIVATE_KEY:
+        required: false
+
 env:
   is-check-into-main: ${{ github.event_name != 'pull_request' && github.ref == format('refs/head/{0}',inputs.main-branch) }}
   is-snapshot: ${{ contains(inputs.app-version, 'SNAPSHOT') }}
@@ -37,7 +44,7 @@ jobs:
   Prepare-Next-Snapshot:
     runs-on: ubuntu-latest
     # Cannot use env.* variables here - https://docs.github.com/en/actions/learn-github-actions/contexts#context-availability
-    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name != 'pull_request' && contains(github.ref, inputs.main-branch) }}
+    if: ${{ !contains(inputs.app-version, 'SNAPSHOT') && github.event_name == 'push' && github.ref == format('refs/heads/{0}', inputs.main-branch) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,9 +66,21 @@ jobs:
         id: set-new-version
         run: echo version=$(./mvnw --no-transfer-progress -q -Dexec.executable=echo -Dexec.args='${project.version}' --non-recursive exec:exec) >> $GITHUB_OUTPUT
 
+      - name: Mint repository-scoped release token
+        if: inputs.release-app-id != ''
+        id: release-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
+        with:
+          app-id: ${{ inputs.release-app-id }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v8.1.1
         with:
+          token: ${{ steps.release-token.outputs.token || github.token }}
           branch: "chore/v${{ steps.set-new-version.outputs.version }}"
           commit-message: "chore: [create-pull-request]  Auto increment to v${{ steps.set-new-version.outputs.version }}"
           title: "chore: Auto increment to v${{ steps.set-new-version.outputs.version }}"
