@@ -55,7 +55,7 @@ jobs:
   Analyze:
     needs: [Acknowledge, Assistant]
     if: needs.Assistant.outputs.command == 'analyze'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # 26.04 AppArmor (bwrap-userns-restrict) breaks the Claude Code sandbox
     timeout-minutes: 35
     permissions:
       contents: read
@@ -142,7 +142,7 @@ jobs:
   Fix:
     needs: [Acknowledge, Assistant]
     if: needs.Assistant.outputs.command == 'fix'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # 26.04 AppArmor (bwrap-userns-restrict) breaks the Claude Code sandbox
     timeout-minutes: 60
     env:
       HANDOFF_RETENTION_DAYS: '1'
@@ -171,22 +171,11 @@ jobs:
           gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
             > "$RUNNER_TEMP/fix-agent/issue-discussion.md"
 
-      # Claude Code's sandbox (bwrap + apply-seccomp) needs a nested user namespace.
-      # ubuntu-26.04 loads the AppArmor profile bwrap-userns-restrict, which strips
-      # capabilities from bwrap's children, so apply-seccomp fails with
-      # "write /proc/self/setgroups: Permission denied". The sysctl alone doesn't lift it.
-      # Low risk on ephemeral GitHub-hosted runners; don't copy to self-hosted runners.
+      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
       - name: Install sandbox
         run: |
           sudo apt-get install -y -qq bubblewrap socat
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          if [[ -f /etc/apparmor.d/bwrap-userns-restrict ]]; then
-            sudo apparmor_parser -R /etc/apparmor.d/bwrap-userns-restrict
-          fi
-          # Fail fast if the nested namespace still can't be created
-          bwrap --unshare-user --ro-bind / / --proc /proc --dev /dev \
-            unshare -U sh -c 'echo deny > /proc/self/setgroups' \
-            && echo "sandbox nested userns OK"
 
       # Trust the default-branch build. Clearing OIDC variables is defense in
       # depth, not isolation from the OIDC-enabled job. Dependencies stay local.
@@ -263,7 +252,7 @@ jobs:
                 "failIfUnavailable": true,
                 "filesystem": {
                   "allowWrite": ["~/.m2", "~/.gradle"],
-                  "denyRead": ["${{ runner.temp }}/claude-workload-identity"],
+                  "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"],
                   "denyWrite": ["${{ runner.temp }}/claude-workload-identity"]
                 },
                 "credentials": {"envVars": [
