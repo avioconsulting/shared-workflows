@@ -68,13 +68,8 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Install sandbox
-        run: |
-          sudo apt-get install -y -qq bubblewrap socat
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Run Claude Code - Analyze
-        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
+        uses: anthropics/claude-code-action@v1 # v1 with WIF
         env:
           GH_TOKEN: ${{ github.token }}
         with:
@@ -84,20 +79,7 @@ jobs:
           classify_inline_comments: 'false'
           settings: |
             {
-              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
-              "sandbox": {
-                "enabled": true,
-                "failIfUnavailable": true,
-                "allowUnsandboxedCommands": false,
-                "autoAllowBashIfSandboxed": false,
-                "filesystem": {"denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"]},
-                "credentials": {"envVars": [
-                  {"name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny"},
-                  {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
-                  {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"}
-                ]},
-                "network": {"allowedDomains": ["api.github.com"]}
-              }
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]}
             }
           prompt: |
             Analyze issue #${{ github.event.issue.number }} in ${{ github.repository }}.
@@ -150,6 +132,20 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Fetch issue discussion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
+            > "$RUNNER_TEMP/fix-agent/issue-discussion.md"
+
+      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
+      - name: Install sandbox
+        run: |
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       # Trust the default-branch build. Clearing OIDC variables is defense in
       # depth, not isolation from the OIDC-enabled job. Dependencies stay local.
       - name: Warm dependencies (base branch)
@@ -177,20 +173,6 @@ jobs:
                  tail -n 60 "$RUNNER_TEMP/baseline.log"; fi
           } > "$RUNNER_TEMP/fix-agent/baseline-build.txt"
           [[ $code -eq 0 ]] || echo "::warning::Baseline build failed; see baseline-build.txt"
-
-      - name: Fetch issue discussion
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
-            > "$RUNNER_TEMP/fix-agent/issue-discussion.md"
-
-      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
-      - name: Install sandbox
-        run: |
-          sudo apt-get install -y -qq bubblewrap socat
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # The only command Claude may run. Root-owned and read-only, so Claude cannot
       # change it. It builds offline and refuses to run unless the sandbox is isolating it.

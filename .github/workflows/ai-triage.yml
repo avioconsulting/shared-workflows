@@ -38,11 +38,6 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      - name: Install sandbox
-        run: |
-          sudo apt-get install -y -qq bubblewrap socat
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Triage with Claude Code
         uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
         env:
@@ -55,20 +50,7 @@ jobs:
           classify_inline_comments: 'false'
           settings: |
             {
-              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
-              "sandbox": {
-                "enabled": true,
-                "failIfUnavailable": true,
-                "allowUnsandboxedCommands": false,
-                "autoAllowBashIfSandboxed": false,
-                "filesystem": {"denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"]},
-                "credentials": {"envVars": [
-                  {"name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny"},
-                  {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
-                  {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"}
-                ]},
-                "network": {"allowedDomains": ["api.github.com"]}
-              }
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]}
             }
           prompt: |
             REPO: ${{ github.repository }}
