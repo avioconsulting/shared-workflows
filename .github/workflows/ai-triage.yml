@@ -45,7 +45,7 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Triage with Claude Code
-        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
+        uses: anthropics/claude-code-action@v1 # v1 with WIF
         env:
           GH_TOKEN: ${{ github.token }}
         with:
