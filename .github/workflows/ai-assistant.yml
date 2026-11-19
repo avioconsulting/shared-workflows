@@ -222,10 +222,12 @@ jobs:
                       ACTIONS_ID_TOKEN_REQUEST_URL GH_TOKEN GITHUB_TOKEN; do
             [[ -z "${!name:-}" ]] || { echo "verify.sh: credential variable visible ($name); refusing to run."; exit 97; }
           done
-          [[ ! -r "$WIF_DIR/identity-token" && ! -x "$WIF_DIR" ]] || {
+          # The sandbox hides a denied directory behind an empty mount, so the
+          # directory itself can still exist. Refuse only if its contents are visible.
+          if [[ -r "$WIF_DIR/identity-token" ]] || [[ -n "$(ls -A "$WIF_DIR" 2>/dev/null)" ]]; then
             echo "verify.sh: federation files accessible; refusing to run."
             exit 97
-          }
+          fi
           curl -s --noproxy '*' -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
           cd "$WORKSPACE" || exit 1
           $CMD 2>&1 | tail -n 200
