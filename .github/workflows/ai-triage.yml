@@ -50,7 +50,17 @@ jobs:
           classify_inline_comments: 'false'
           settings: |
             {
-              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]}
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
+              "sandbox": {
+                  "enabled": true,
+                  "failIfUnavailable": true,
+                  "filesystem": { "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"] },
+                  "credentials": { "envVars": [
+                    { "name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny" },
+                    { "name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny" },
+                    { "name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny" }
+                  ]}
+              }
             }
           prompt: |
             REPO: ${{ github.repository }}

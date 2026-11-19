@@ -79,7 +79,17 @@ jobs:
           classify_inline_comments: 'false'
           settings: |
             {
-              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]}
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
+              "sandbox": {
+                  "enabled": true,
+                  "failIfUnavailable": true,
+                  "filesystem": { "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"] },
+                  "credentials": { "envVars": [
+                    { "name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny" },
+                    { "name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny" },
+                    { "name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny" }
+                  ]}
+              }
             }
           prompt: |
             Analyze issue #${{ github.event.issue.number }} in ${{ github.repository }}.
@@ -106,12 +116,20 @@ jobs:
             - Report checks actually executed and their results. Clearly identify checks that failed or were not run.
 
             ## Analyze requests
-            Investigate without editing files or executing project code. Publish findings directly in the requested issue comment.
+            Investigate without editing files or executing project code. 
+            Publish an evidence-based analysis and a proposed change plan, not an implementation. 
+            Do not include complete methods, classes, patches, or ready-to-paste code.
+            Use short snippets or request/response examples only when they clarify a finding.
+            Do not claim a proposed change is implemented, verified, or production-ready.
+            
+            For follow-up requests, use the previous analysis and the new clarification. Lead with what changed and avoid repeating findings that still apply.
+            
             Respond with:
             1. Evidence, citing relevant files and revisions where available.
-            2. Confirmed findings versus root-cause hypotheses and uncertainty.
-            3. A suggested fix scope, regression test and compatibility risks.
-            4. Missing information needed to proceed, if any.
+            2. Confirmed requirements and findings, separate from assumptions and hypotheses.
+            3. A file-level change plan describing what to change and why, without writing the implementation.
+            4. Regression test cases with expected outcomes, and compatibility risks.
+            5. Open decisions or missing information that would change the fix, if any. 
             Do not invent a root cause when evidence is insufficient.
             "
 
@@ -226,9 +244,6 @@ jobs:
               "sandbox": {
                 "enabled": true,
                 "failIfUnavailable": true,
-                "allowUnsandboxedCommands": false,
-                "autoAllowBashIfSandboxed": false,
-                "network": {"allowedDomains": []},
                 "filesystem": {
                   "allowWrite": ["~/.m2", "~/.gradle"],
                   "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"],
