@@ -14,9 +14,6 @@ on:
         required: false
         type: string
         default: bug, enhancement, question, ai-triaged, "need information"
-    secrets:
-      ANTHROPIC_API_KEY:
-        required: true
 
 concurrency:
   group: ai-triage-${{ github.repository }}-${{ github.event.issue.number }}
@@ -33,6 +30,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -40,13 +38,38 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Install sandbox
+        run: |
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Triage with Claude Code
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
         env:
           GH_TOKEN: ${{ github.token }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_TRIAGE_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          # Issue triage does not publish PR inline comments.
+          classify_inline_comments: 'false'
+          settings: |
+            {
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
+              "sandbox": {
+                "enabled": true,
+                "failIfUnavailable": true,
+                "allowUnsandboxedCommands": false,
+                "autoAllowBashIfSandboxed": false,
+                "filesystem": {"denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"]},
+                "credentials": {"envVars": [
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny"},
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
+                  {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"}
+                ]},
+                "network": {"allowedDomains": ["api.github.com"]}
+              }
+            }
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -137,6 +160,7 @@ jobs:
             - If a required read fails, stop without speculative updates.
               Report tool failures in the run output rather than claiming success.
           claude_args: |
+            --setting-sources user
             --model ${{ inputs.model }}
             --max-turns 12
             --max-budget-usd 1

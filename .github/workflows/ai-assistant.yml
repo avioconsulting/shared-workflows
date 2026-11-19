@@ -8,9 +8,6 @@ on:
         required: false
         type: string
         default: claude-sonnet-4-5-20250929
-    secrets:
-      ANTHROPIC_API_KEY:
-        required: true
 
 jobs:
   Assistant:
@@ -56,13 +53,14 @@ jobs:
             });
 
   Analyze:
-    needs: Acknowledge
+    needs: [Acknowledge, Assistant]
     if: needs.Assistant.outputs.command == 'analyze'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
       contents: read
       issues: write
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -70,13 +68,37 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
+      - name: Install sandbox
+        run: |
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Run Claude Code - Analyze
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
         env:
           GH_TOKEN: ${{ github.token }}
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          classify_inline_comments: 'false'
+          settings: |
+            {
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
+              "sandbox": {
+                "enabled": true,
+                "failIfUnavailable": true,
+                "allowUnsandboxedCommands": false,
+                "autoAllowBashIfSandboxed": false,
+                "filesystem": {"denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"]},
+                "credentials": {"envVars": [
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny"},
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
+                  {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"}
+                ]},
+                "network": {"allowedDomains": ["api.github.com"]}
+              }
+            }
           prompt: |
             Analyze issue #${{ github.event.issue.number }} in ${{ github.repository }}.
             Read GITHUB_EVENT_PATH for the issue and triggering comment. Retrieve
@@ -87,6 +109,7 @@ jobs:
             is the only permitted GitHub change. Do not change labels, issue
             state, title, body, or assignees. Do not create branches, commit, or push.
           claude_args: |
+            --setting-sources user
             --model ${{ inputs.model }}
             --max-turns 30
             --max-budget-usd 6
@@ -111,7 +134,7 @@ jobs:
             "
 
   Fix:
-    needs: Acknowledge
+    needs: [Acknowledge, Assistant]
     if: needs.Assistant.outputs.command == 'fix'
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -119,6 +142,7 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
+      id-token: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -126,28 +150,13 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           persist-credentials: false
 
-      # Claude can no longer run gh, so the discussion is fetched for it.
-      - name: Fetch issue discussion
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
-        run: |
-          gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
-            > "$RUNNER_TEMP/issue-discussion.md"
-
-      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
-      - name: Install sandbox
-        run: |
-          sudo apt-get install -y -qq bubblewrap socat
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
-      # Builds the unmodified default branch once, outside the sandbox and before
-      # Claude runs, to download every dependency and plugin into ~/.m2 / ~/.gradle.
-      # Claude's builds then run offline. The baseline result tells Claude whether
-      # the build was already failing before its change.
-      - name: Warm dependency cache (base branch)
+      # Trust the default-branch build. Clearing OIDC variables is defense in
+      # depth, not isolation from the OIDC-enabled job. Dependencies stay local.
+      - name: Warm dependencies (base branch)
         id: build
         run: |
+          unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
+          mkdir -p "$RUNNER_TEMP/fix-agent"
           if compgen -G 'build.gradle*' >/dev/null || compgen -G 'settings.gradle*' >/dev/null; then
             cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew
             echo "verify=$cmd --no-daemon --offline build" >> "$GITHUB_OUTPUT"
@@ -166,8 +175,22 @@ jobs:
             if [[ $code -eq 0 ]]; then echo "Baseline build of the default branch PASSED."
             else echo "Baseline build of the default branch FAILED before any change (exit $code). Last lines:"
                  tail -n 60 "$RUNNER_TEMP/baseline.log"; fi
-          } > "$RUNNER_TEMP/baseline-build.txt"
+          } > "$RUNNER_TEMP/fix-agent/baseline-build.txt"
           [[ $code -eq 0 ]] || echo "::warning::Baseline build failed; see baseline-build.txt"
+
+      - name: Fetch issue discussion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
+            > "$RUNNER_TEMP/fix-agent/issue-discussion.md"
+
+      # bubblewrap powers Claude Code's sandbox; Ubuntu 24.04 runners need user namespaces.
+      - name: Install sandbox
+        run: |
+          sudo apt-get install -y -qq bubblewrap socat
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       # The only command Claude may run. Root-owned and read-only, so Claude cannot
       # change it. It builds offline and refuses to run unless the sandbox is isolating it.
@@ -177,12 +200,21 @@ jobs:
         run: |
           {
             echo '#!/usr/bin/env bash'
-            printf 'CMD=%q\nWORKSPACE=%q\n' "$VERIFY_CMD" "$GITHUB_WORKSPACE"
+            printf 'CMD=%q\nWORKSPACE=%q\nWIF_DIR=%q\n' \
+              "$VERIFY_CMD" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/claude-workload-identity"
             cat <<'EOF'
           set -uo pipefail
-          [[ -z "${ANTHROPIC_API_KEY:-}" ]] || { echo "verify.sh: credentials visible, not sandboxed; refusing to run."; exit 97; }
-          curl -s -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
-          cd "$WORKSPACE"
+          for name in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN \
+                      ANTHROPIC_IDENTITY_TOKEN_FILE ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+                      ACTIONS_ID_TOKEN_REQUEST_URL GH_TOKEN GITHUB_TOKEN; do
+            [[ -z "${!name:-}" ]] || { echo "verify.sh: credential variable visible ($name); refusing to run."; exit 97; }
+          done
+          [[ ! -r "$WIF_DIR/identity-token" && ! -x "$WIF_DIR" ]] || {
+            echo "verify.sh: federation files accessible; refusing to run."
+            exit 97
+          }
+          curl -s --noproxy '*' -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
+          cd "$WORKSPACE" || exit 1
           $CMD 2>&1 | tail -n 200
           EOF
           } > /tmp/verify.sh
@@ -190,29 +222,53 @@ jobs:
 
       - name: Run Claude Code - Fix
         id: fix
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@f431adaf77e0fecf918431e75a2b5b45b85af002 # v1 with WIF
         env:
           # Keeps credentials out of every subprocess Claude starts.
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: '1'
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: ${{ vars.ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID }}
+          anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          classify_inline_comments: 'false'
+          settings: |
+            {
+              "permissions": {"deny": ["Read(/${{ runner.temp }}/claude-workload-identity/**)", "Read(//proc/**)"]},
+              "sandbox": {
+                "enabled": true,
+                "failIfUnavailable": true,
+                "allowUnsandboxedCommands": false,
+                "autoAllowBashIfSandboxed": false,
+                "network": {"allowedDomains": []},
+                "filesystem": {
+                  "allowWrite": ["~/.m2", "~/.gradle"],
+                  "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"],
+                  "denyWrite": ["${{ runner.temp }}/claude-workload-identity"]
+                },
+                "credentials": {"envVars": [
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_URL", "mode": "deny"},
+                  {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
+                  {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"},
+                  {"name": "GH_TOKEN", "mode": "deny"},
+                  {"name": "GITHUB_TOKEN", "mode": "deny"}
+                ]}
+              }
+            }
           # An explicit prompt selects agent mode; the workflow publishes the changes.
           prompt: |
             Implement the fix requested on issue #${{ github.event.issue.number }}
             in ${{ github.repository }}.
-            Read GITHUB_EVENT_PATH for the issue and triggering comment, and
-            ${{ runner.temp }}/issue-discussion.md for the discussion, including prior analysis.
-            ${{ runner.temp }}/baseline-build.txt says whether the build passed before your change.
+            Read ${{ runner.temp }}/fix-agent/issue-discussion.md for the issue and
+            discussion, including prior analysis, and GITHUB_EVENT_PATH for the triggering comment.
+            ${{ runner.temp }}/fix-agent/baseline-build.txt says whether the build passed before your change.
             Follow the fix and PR metadata instructions below.
           claude_args: |
+            --setting-sources user
             --model ${{ inputs.model }}
             --max-turns 30
             --max-budget-usd 6
             --allowedTools "Bash(/usr/local/bin/verify.sh),Read,Write,Edit,Glob,Grep"
-            --disallowedTools "Read(//proc/**)"
-            --settings '{"sandbox": {"enabled": true, "allowUnsandboxedCommands": false, "network": {"allowedDomains": []}, "filesystem": {"allowWrite": ["~/.m2", "~/.gradle"]}}}'
-            --add-dir "${{ runner.temp }}"
+            --add-dir "${{ runner.temp }}/fix-agent"
             --append-system-prompt "
             ## Role and shared rules
             Help maintain this repository according to the maintainer's request.
@@ -235,8 +291,8 @@ jobs:
 
             ## PR metadata handoff
             Before finishing, always write these two UTF-8 files outside the repository:
-            - ${{ runner.temp }}/fix-pr-metadata.json: a JSON object with a required status field: ready, needs_clarification, or no_changes. Use ready only when the fix is complete enough for review. For ready, also include title and commit_message as nonempty single-line strings; use a concise conventional commit message and a PR title no longer than 256 characters.
-            - ${{ runner.temp }}/fix-pr-body.md: for ready, a Markdown PR description containing a summary, behavior changed, regression tests added, checks actually executed and their results, remaining limitations, and Fixes #${{ github.event.issue.number }}.
+            - ${{ runner.temp }}/fix-agent/fix-pr-metadata.json: a JSON object with a required status field: ready, needs_clarification, or no_changes. Use ready only when the fix is complete enough for review. For ready, also include title and commit_message as nonempty single-line strings; use a concise conventional commit message and a PR title no longer than 256 characters.
+            - ${{ runner.temp }}/fix-agent/fix-pr-body.md: for ready, a Markdown PR description containing a summary, behavior changed, regression tests added, checks actually executed and their results, remaining limitations, and Fixes #${{ github.event.issue.number }}.
             If the requested outcome is unclear or missing information blocks a fix, return needs_clarification and put focused questions in the body. For no_changes, explain why no fix is necessary in the body. Always write both files. The publisher will post that body without applying code changes or creating a PR for either of these statuses, even if local partial edits exist.
             Do not claim checks passed unless they ran and passed. A run ends after posting questions; a maintainer must reply with a new @claude fix command to resume with the updated discussion.
             "
@@ -250,7 +306,7 @@ jobs:
           git rev-parse HEAD > "$RUNNER_TEMP/fix-handoff/base-sha"
           git add --all
           git diff --cached --binary > "$RUNNER_TEMP/fix-handoff/fix.patch"
-          cp "$RUNNER_TEMP/fix-pr-metadata.json" "$RUNNER_TEMP/fix-pr-body.md" "$RUNNER_TEMP/fix-handoff/"
+          cp "$RUNNER_TEMP/fix-agent/fix-pr-metadata.json" "$RUNNER_TEMP/fix-agent/fix-pr-body.md" "$RUNNER_TEMP/fix-handoff/"
 
       - name: Upload fix handoff
         uses: actions/upload-artifact@v7

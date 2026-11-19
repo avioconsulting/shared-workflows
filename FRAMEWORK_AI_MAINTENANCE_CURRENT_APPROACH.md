@@ -73,7 +73,7 @@ The Fix agent checks out the default branch and reads the discussion, including 
 | `needs_clarification` | Questions are posted on the issue; partial edits are not published. Reply with a **new `@claude fix` comment** containing the answers. |
 | `no_changes` | An explanation is posted on the issue; no PR is created. |
 
-The Fix job has read-only GitHub permissions. A one-day artifact transfers its patch, base SHA, and PR metadata to a fresh `PublishFix` job with write permissions. The publisher validates the handoff and applies the patch **without running project code**. If the default branch moved, publication stops; request a fresh fix. Fix may itself run project code while holding the model credential, so separating publication credentials does not make Fix a sandbox.
+`Fix` runs the trusted default-branch baseline on the same runner before Claude starts. The warm-up shell unsets the OIDC request variables, but the job still has OIDC permission for Claude authentication. Dependencies stay on the runner; Claude runs the offline verifier in a sandbox configured to hide the federation files and credentials. A one-day artifact transfers the patch, base SHA, and PR metadata to `PublishFix`, which has write permissions but no OIDC and applies the patch **without running project code**. If the default branch moved, publication stops; request a fresh fix.
 
 ### 4. Verify, review, merge, and release
 
@@ -88,7 +88,7 @@ When available in the calling repository, a maintainer can assign a **GitHub Cop
 These are **reusable workflows** (`workflow_call`), not issue listeners until a framework repository calls them. For each GitHub-hosted framework:
 
 1. Add a caller on the default branch for `issues: [opened, labeled]` and a second caller for `issue_comment: [created]`.
-2. Pass `ANTHROPIC_API_KEY` explicitly. Grant triage contents-read/issues-write permissions and the assistant caller contents/issues/PRs-write permissions; the assistant's individual jobs narrow those permissions.
+2. Configure Anthropic workload identity federation and set the organization and federation rule IDs as Actions variables in the caller's context. Grant both caller jobs `id-token: write` in addition to their GitHub repository permissions; the reusable workflows narrow permissions per job.
 3. Provide repository-specific `AGENTS.md` guidance, relevant issue templates, test instructions, and the labels needed for triage. Add `CLAUDE.md` importing `@AGENTS.md` where used.
 4. Enable GitHub Actions PR creation, preserve human-review protections, and verify how CI will run on bot-created PRs.
 
@@ -108,6 +108,6 @@ Use the [README setup examples](README.md#ai-framework-maintenance) and a review
 | --- | ---: | ---: | ---: |
 | Triage | 12 | $1 | 10 minutes |
 | Analyze | 30 | $6 | 35 minutes |
-| Fix | 30 | $6 | 35 minutes |
+| Fix | 30 | $6 | 60 minutes |
 
-Routing has a separate 5-minute timeout, and fix publication has a 10-minute timeout. Budgets apply **per invocation**, not across the repository or organization. Anthropic API and GitHub runner usage are charged separately.
+Routing has a separate 5-minute timeout, and fix publication has a 10-minute timeout. Baseline preparation is included in the Fix timeout. Budgets apply **per invocation**, not across the repository or organization. Anthropic API and GitHub runner usage are charged separately.
