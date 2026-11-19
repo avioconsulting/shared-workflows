@@ -185,7 +185,7 @@ jobs:
           fi
           # Fail fast if the nested namespace still can't be created
           bwrap --unshare-user --ro-bind / / --proc /proc --dev /dev \
-            unshare -Ur sh -c 'echo deny > /proc/self/setgroups' \
+            unshare -U sh -c 'echo deny > /proc/self/setgroups' \
             && echo "sandbox nested userns OK"
 
       # Trust the default-branch build. Clearing OIDC variables is defense in
