@@ -120,6 +120,12 @@ jobs:
     if: needs.Assistant.outputs.command == 'fix'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      HANDOFF_RETENTION_DAYS: '1'
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      artifact-url: ${{ steps.upload.outputs.artifact-url }}
+      expires-approx: ${{ steps.expiry.outputs.utc }}
     permissions:
       contents: read
       issues: read
@@ -137,6 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
+          mkdir -p "$RUNNER_TEMP/fix-agent"
           gh issue view "$ISSUE_NUMBER" --repo "$GITHUB_REPOSITORY" --comments \
             > "$RUNNER_TEMP/fix-agent/issue-discussion.md"
 
@@ -291,12 +298,17 @@ jobs:
           cp "$RUNNER_TEMP/fix-agent/fix-pr-metadata.json" "$RUNNER_TEMP/fix-agent/fix-pr-body.md" "$RUNNER_TEMP/fix-handoff/"
 
       - name: Upload fix handoff
+        id: upload
         uses: actions/upload-artifact@v7
         with:
           name: assistant-fix
           path: ${{ runner.temp }}/fix-handoff/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ env.HANDOFF_RETENTION_DAYS }}
+
+      - name: Estimate handoff expiration
+        id: expiry
+        run: echo "utc=$(date -u -d "+$HANDOFF_RETENTION_DAYS days" '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_OUTPUT"
 
   PublishFix:
     needs: Fix
@@ -385,10 +397,19 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           PR_URL: ${{ steps.fix-pr.outputs.pull-request-url }}
           FIX_STATUS: ${{ steps.pr-metadata.outputs.status }}
+          ARTIFACT_ID: ${{ needs.Fix.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ needs.Fix.outputs.artifact-url }}
+          EXPIRES_APPROX: ${{ needs.Fix.outputs.expires-approx }}
         run: |
           if [[ "$FIX_STATUS" == 'needs_clarification' ]]; then
             printf 'Clarification needed before preparing a fix. Reply with @claude fix and your answers to start a new run.\n\n'
             cat "$RUNNER_TEMP/fix-handoff/fix-pr-body.md"
+            if [[ -s "$RUNNER_TEMP/fix-handoff/fix.patch" ]]; then
+              printf '\n\nUnverified changes: [Download patch bundle](%s) · [View workflow run](%s/%s/actions/runs/%s).\n' \
+                "$ARTIFACT_URL" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID"
+              printf 'The bundle expires around %s.\n\n' "$EXPIRES_APPROX"
+              printf '<!-- ai-fix-resume:v1 run_id=%s artifact_id=%s -->\n' "$GITHUB_RUN_ID" "$ARTIFACT_ID"
+            fi
           elif [[ "$FIX_STATUS" == 'no_changes' ]]; then
             printf 'No code changes proposed.\n\n'
             cat "$RUNNER_TEMP/fix-handoff/fix-pr-body.md"

@@ -221,6 +221,9 @@ is handled by subsequent workflow steps:
 
 For `needs_clarification`, the publisher posts the agent's questions and skips
 patch application and PR creation, even when the handoff contains partial edits.
+When there are partial edits, the comment links to the patch bundle and workflow
+run, gives the approximate expiration time, and includes a hidden marker with
+the run and artifact IDs.
 Reply with `@claude fix` and the answers to start a fresh run that reads the updated
 discussion. A plain reply does not trigger the assistant. For `no_changes`, the
 publisher posts the explanation without applying a patch or creating a PR.
