@@ -233,18 +233,6 @@ jobs:
           } > /tmp/verify.sh
           sudo install -o root -g root -m 555 /tmp/verify.sh /usr/local/bin/verify.sh
 
-      # Claude's sandbox needs unprivileged user namespaces (via bwrap/seccomp).
-      # Ubuntu 24.04 runners block them by default through AppArmor, which makes
-      # sandboxed commands (e.g. verify.sh) fail with
-      # "write /proc/self/setgroups: Permission denied".
-      # Security: low risk on GitHub-hosted runners. The runner user already has
-      # passwordless sudo and the VM is destroyed after the job. It also lets the
-      # sandbox run, so Claude's commands stay confined. Keep this step scoped to
-      # this job only.
-      # Do NOT copy this to self-hosted runners; use a bwrap-only AppArmor profile there.
-      - name: Allow unprivileged user namespaces (required by sandbox)
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-
       - name: Run Claude Code - Fix
         id: fix
         uses: anthropics/claude-code-action@v1 # v1 with WIF
@@ -264,7 +252,7 @@ jobs:
                 "failIfUnavailable": true,
                 "filesystem": {
                   "allowWrite": ["~/.m2", "~/.gradle"],
-                  "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"],
+                  "denyRead": ["${{ runner.temp }}/claude-workload-identity"],
                   "denyWrite": ["${{ runner.temp }}/claude-workload-identity"]
                 },
                 "credentials": {"envVars": [
