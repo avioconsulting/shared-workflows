@@ -16,13 +16,21 @@ Choose one triage implementation per calling repository.
 
 ### Setup
 
-1. Create a dedicated API key in the [Anthropic Console](https://console.anthropic.com/)
-   and configure appropriate API spending limits.
-2. In the **calling framework repository**, open **Settings → Secrets and variables
-   → Actions → New repository secret**. Store the key as `ANTHROPIC_API_KEY`.
-   Alternatively, create an organization-level Actions secret with the same name
-   and grant the calling repositories access. Pass the secret explicitly as shown
-   below; the reusable workflow declares the secret but does not store its value.
+1. For direct triage and the assistant, follow [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
+   In the Claude Console, register the GitHub OIDC issuer and create two
+   federation rules for a dedicated service account in a single maintenance workspace.
+   Match the `https://api.anthropic.com` audience, approved calling repositories and
+   their protected default branches, and the exact reusable `job_workflow_ref`
+   (including the shared workflow ref). Match `event_name` to `issues` for triage
+   and `issue_comment` for the assistant. Configure workspace spending limits.
+2. In **Settings → Secrets and variables → Actions → Variables** of each
+   **calling repository**, set `ANTHROPIC_ORGANIZATION_ID`,
+   `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`, and
+   `ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID` as applicable. These identifiers are
+   not secrets. Organization-level variables scoped to approved callers also work.
+   Add `id-token: write` to each caller job below and remove its API-key mapping
+   or `secrets: inherit` if no other secrets are needed. Pilot against a reviewed
+   shared-workflow ref with matching Console rules before moving existing callers.
 3. Precreate `bug`, `enhancement`, `question`, `ai-triaged`, `need information`,
    and `needs-triage` labels in the calling repository. For custom classifications,
    create those labels and describe their meaning in repository guidance or label
@@ -35,9 +43,11 @@ Choose one triage implementation per calling repository.
    the calling repository, subject to organization policy. The workflow creates
    PRs but does not approve or merge them.
 
-All three workflows are configured for **Anthropic API billing**, charged to the
-organization associated with the API key. Claude Pro/Max subscriptions do not fund
-this API usage. GitHub Actions runner usage is accounted for separately.
+All three workflows use **Anthropic API billing**, charged to the organization
+associated with the federation rule or API key. The separate `gh-aw` alternative
+still uses `ANTHROPIC_API_KEY`; check for other consumers before revoking any
+existing key. Claude subscriptions do not fund this API usage. GitHub Actions
+runner usage is accounted for separately.
 
 The shared repository must be accessible to the caller. The examples use `@main`;
 use the branch containing these workflows for a pilot, and a reviewed SHA for rollout.
@@ -55,10 +65,9 @@ jobs:
     permissions:
       contents: read
       issues: write
+      id-token: write
     with:
       triage-labels: bug,enhancement,question
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 Create `.github/workflows/ai-assistant.yml` in the framework repository:
@@ -75,21 +84,20 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      id-token: write
 ```
 
 ### Inputs and execution limits
 
 All three workflows accept an optional `model` input. Their configured defaults
 are `claude-haiku-5-5` for direct triage, `claude-sonnet-4-5-20250929` for the
-assistant, and `claude-haiku-4-5` for gh-aw triage. Pass named secrets, not
-`secrets: inherit`.
+assistant, and `claude-haiku-4-5` for gh-aw triage. Only the gh-aw alternative
+requires a named API-key secret.
 
 | Workflow | Additional inputs | Max turns | Claude CLI budget | Configured timeout |
 | --- | --- | --- | --- | --- |
 | `ai-triage.yml` | `triage-labels`: comma-separated classification labels | 12 | $1 | 10 minutes |
-| `ai-assistant.yml` | None | 30 per selected operation | $6 per selected operation | Routing: 5 minutes; agent: 35 minutes; fix publication: 10 minutes |
+| `ai-assistant.yml` | None | 30 per selected operation | $6 per selected operation | Routing: 5 minutes; Analyze: 35 minutes; Fix (including baseline): 60 minutes; fix publication: 10 minutes |
 | `ai-triage-gh-aw.lock.yml` | No additional user-facing inputs; labels configured in the Markdown source | 12 | $1 | 10 minutes for agent execution |
 
 The direct-triage caller above explicitly sets `triage-labels` to
@@ -156,15 +164,15 @@ Only newly created, human-authored **issue** comments are eligible. PR conversat
 comments, inline reviews, and comment edits are excluded. The Claude Code Action
 checks the requesting user's repository write access before running either agent.
 
-Each execution job checks out the repository's default branch and receives its
-own token permissions:
+Each job receives only the permissions it needs:
 
-| Job | Contents | Issues | Pull requests |
-| --- | --- | --- | --- |
-| Assistant (routing) | None | None | None |
-| Analyze | Read | Write | None |
-| Fix | Read | Read | Read |
-| PublishFix | Write | Write | Write |
+| Job | Contents | Issues | Pull requests | OIDC |
+| --- | --- | --- | --- | --- |
+| Assistant (routing) | None | None | None | No |
+| Acknowledge | None | Write | None | No |
+| Analyze | Read | Write | None | Yes |
+| Fix | Read | Read | Read | Yes |
+| PublishFix | Write | Write | Write | No |
 
 Same-run artifact downloads do not require an additional `actions: read` grant. Both agents
 use explicit automation prompts, avoiding interactive branch setup. Checkout
@@ -177,7 +185,10 @@ the issues-write permission is broader than the comment-only instruction.
 
 ### Fix publication
 
-The Fix job uses an explicit prompt to select Claude's automation mode. Publication
+`Fix` runs the trusted default-branch baseline before Claude starts and keeps
+warmed dependencies on the same runner for offline verification. It unsets
+OIDC request variables for the warm-up shell, but the job itself has OIDC
+permission. Dependencies are not uploaded or cached across runs. Publication
 is handled by subsequent workflow steps:
 
 1. Claude reads the triggering issue/comment and discussion, implements a focused
@@ -186,7 +197,7 @@ is handled by subsequent workflow steps:
    The agent job has only read permissions on GitHub.
 2. Claude writes `fix-pr-metadata.json` (status, plus title and commit message for
    `ready`) and
-   `fix-pr-body.md` under `runner.temp`, outside the checkout. The requested body
+   `fix-pr-body.md` under `runner.temp/fix-agent`, outside the checkout. The requested body
    includes the change summary, tests and actual check results, limitations, and
    `Fixes #<issue-number>`.
 3. After a successful agent conclusion, the job uploads a binary-capable patch,
@@ -210,6 +221,9 @@ is handled by subsequent workflow steps:
 
 For `needs_clarification`, the publisher posts the agent's questions and skips
 patch application and PR creation, even when the handoff contains partial edits.
+When there are partial edits, the comment links to the patch bundle and workflow
+run, gives the approximate expiration time, and includes a hidden marker with
+the run and artifact IDs.
 Reply with `@claude fix` and the answers to start a fresh run that reads the updated
 discussion. A plain reply does not trigger the assistant. For `no_changes`, the
 publisher posts the explanation without applying a patch or creating a PR.
@@ -231,13 +245,12 @@ chosen CI triggering arrangement before relying on the workflow. Local workflow
 linting does not verify live GitHub/model execution.
 
 Direct triage and the assistant use the Claude Code Action's built-in write-access
-checks. Fix commands can execute project code in the model-authenticated job with
-a read-only GitHub token. Write-capable publication runs on a separate runner,
-consuming only the patch/report and metadata, not scripts from the agent workspace.
-This separates GitHub write credentials but is not a sandbox for the agent or its
-Anthropic API credentials. Human review
-and required checks remain responsible for merge decisions. Monitor API usage and
-use the disabling options described above.
+checks. Fix executes changed project code only through its sandboxed offline
+verifier. Confirm on the pilot runner that the verifier cannot reach the network,
+the OIDC request variables, or the federation token/cache. Confirm an unapproved
+workflow ref is denied in Claude Console authentication history. Write-capable
+publication runs on a separate runner without OIDC and consumes only the
+patch/report and metadata. Human review and required checks still govern merges.
 
 ### gh-aw triage comparison
 
