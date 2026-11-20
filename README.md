@@ -536,6 +536,21 @@ and publishing deploys pass `-DskipTests=true -DskipITs=true` to skip Surefire
 and Failsafe respectively. Projects that start services for integration tests
 should use `skipITs` to skip that setup and teardown as well.
 
+For app-authored next-snapshot PRs, pass `release-app-id` and the
+`RELEASE_APP_PRIVATE_KEY` secret to `maven-post-release.yml`. Without an ID,
+existing callers continue to use `GITHUB_TOKEN`. The optional
+`maven-snapshot-check.yml` workflow returns `verified=true` only for the AVIO
+release bot's exact next-patch edit to a single-module root POM. Keep normal
+builds on `main` and run full PR checks unless that output is true.
+
+Gradle callers can opt into the same release bot via `gradle-post-release.yml`
+with `release-app-id` and `RELEASE_APP_PRIVATE_KEY`. To enable the lightweight
+PR check, call `gradle-snapshot-check.yml` with `version-files` listing every
+expected Semver plugin `version.properties` path (one per line). The complete
+diff must bump all listed files to the same next patch snapshot. Other layouts
+or edits take the normal build path. As with Maven, keep full builds on `main`
+and exclude generated snapshot branches from duplicate push builds.
+
 Maven release workflow requires the following [Organization Secrets](https://github.com/organizations/avioconsulting/settings/secrets/actions) to be shared with the target repository :
 
 - JRELEASER_GPG_PASSPHRASE

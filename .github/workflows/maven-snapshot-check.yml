@@ -1,0 +1,67 @@
+name: Check automated Maven snapshot bump
+on:
+  workflow_call:
+    outputs:
+      verified:
+        value: ${{ jobs.Classify.outputs.verified }}
+
+jobs:
+  Classify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.check.outputs.verified || 'false' }}
+    steps:
+      - name: Identify candidate
+        id: candidate
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login == 'avio-release-bot[bot]' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.base_ref == github.event.repository.default_branch &&
+          startsWith(github.head_ref, 'chore/v')
+        run: echo 'candidate=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v7
+        if: steps.candidate.outputs.candidate == 'true'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact single-module POM edit
+        id: check
+        if: steps.candidate.outputs.candidate == 'true'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        shell: python
+        run: |
+          import os, re, subprocess, xml.etree.ElementTree as ET
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          def verified(base, head):
+              if git('diff', '--no-renames', '--name-status', '-z', base, head) != b'M\0pom.xml\0':
+                  return False
+              def pom(ref):
+                  if not git('ls-tree', ref, 'pom.xml').startswith(b'100644 blob '):
+                      raise ValueError('unexpected POM mode')
+                  return git('show', ref + ':pom.xml')
+              old, new = pom(base), pom(head)
+              root = ET.fromstring(old)
+              if root.find('.//{*}modules') is not None:
+                  return False
+              version = root.findtext('{*}version', '')
+              match = re.fullmatch(r'(\d+)\.(\d+)\.(\d+)', version)
+              if not match:
+                  return False
+              major, minor, patch = match.groups()
+              target = f'{major}.{minor}.{int(patch)+1}-SNAPSHOT'
+              tag = f'<version>{version}</version>'.encode()
+              return (os.environ['GITHUB_HEAD_REF'] == 'chore/v' + target
+                      and ET.fromstring(new).findtext('{*}version') == target
+                      and old.replace(tag, f'<version>{target}</version>'.encode(), 1) == new)
+          try:
+              ok = verified(os.environ['BASE'], os.environ['HEAD'])
+          except (ValueError, ET.ParseError):
+              ok = False
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              print('verified=' + str(ok).lower(), file=out)
