@@ -8,6 +8,19 @@ on:
         required: false
         type: string
         default: claude-sonnet-5-5
+    secrets:
+      MULE_EE_USERNAME:
+        description: Read-only Mule EE username for the default-branch Maven warmup
+        required: false
+      MULE_EE_PASSWORD:
+        description: Read-only Mule EE password for the default-branch Maven warmup
+        required: false
+      JFROG_USER:
+        description: Read-only JFrog username for the default-branch Maven warmup
+        required: false
+      JFROG_PASSWORD:
+        description: Read-only JFrog password or token for the default-branch Maven warmup
+        required: false
 
 jobs:
   Assistant:
@@ -181,10 +194,16 @@ jobs:
       # depth, not isolation from the OIDC-enabled job. Dependencies stay local.
       - name: Warm dependencies (base branch)
         id: build
+        env:
+          MULE_EE_USERNAME: ${{ secrets.MULE_EE_USERNAME }}
+          MULE_EE_PASSWORD: ${{ secrets.MULE_EE_PASSWORD }}
+          JFROG_USER: ${{ secrets.JFROG_USER }}
+          JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
         run: |
           unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
           mkdir -p "$RUNNER_TEMP/fix-agent"
           if compgen -G 'build.gradle*' >/dev/null || compgen -G 'settings.gradle*' >/dev/null; then
+            unset MULE_EE_USERNAME MULE_EE_PASSWORD JFROG_USER JFROG_PASSWORD
             cmd=gradle; [[ -f gradlew ]] && cmd=./gradlew
             echo "verify=$cmd --no-daemon --offline build" >> "$GITHUB_OUTPUT"
             warm="$cmd --no-daemon build"
@@ -195,42 +214,49 @@ jobs:
           else
             echo '::error::No pom.xml or build.gradle(.kts) found.' >&2; exit 1
           fi
-          set +e
-          $warm > "$RUNNER_TEMP/baseline.log" 2>&1
-          code=$?
-          {
-            if [[ $code -eq 0 ]]; then echo "Baseline build of the default branch PASSED."
-            else echo "Baseline build of the default branch FAILED before any change (exit $code). Last lines:"
-                 tail -n 60 "$RUNNER_TEMP/baseline.log"; fi
-          } > "$RUNNER_TEMP/fix-agent/baseline-build.txt"
-          [[ $code -eq 0 ]] || echo "::warning::Baseline build failed; see baseline-build.txt"
+          # Do not retain or forward output from a build that can see secrets.
+          if $warm >/dev/null 2>&1; then
+            echo "Baseline build of the default branch PASSED."
+          else
+            code=$?
+            echo "::warning::Baseline build failed (exit $code); build output was not retained." >&2
+            echo "Baseline build of the default branch FAILED before any change (exit $code)."
+          fi > "$RUNNER_TEMP/fix-agent/baseline-build.txt"
 
       # The only command Claude may run. Root-owned and read-only, so Claude cannot
       # change it. It builds offline and refuses to run unless the sandbox is isolating it.
       - name: Create verify.sh
+        id: verify-script
         env:
           VERIFY_CMD: ${{ steps.build.outputs.verify }}
         run: |
+          mkdir -p "$RUNNER_TEMP/fix-verification"
           {
             echo '#!/usr/bin/env bash'
-            printf 'CMD=%q\nWORKSPACE=%q\nWIF_DIR=%q\n' \
-              "$VERIFY_CMD" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/claude-workload-identity"
+            printf 'CMD=%q\nWORKSPACE=%q\nWIF_DIR=%q\nLOG_DIR=%q\n' \
+              "$VERIFY_CMD" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/claude-workload-identity" \
+              "$RUNNER_TEMP/fix-verification"
             cat <<'EOF'
           set -uo pipefail
-          for name in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN \
-                      ANTHROPIC_IDENTITY_TOKEN_FILE ACTIONS_ID_TOKEN_REQUEST_TOKEN \
-                      ACTIONS_ID_TOKEN_REQUEST_URL GH_TOKEN GITHUB_TOKEN; do
-            [[ -z "${!name:-}" ]] || { echo "verify.sh: credential variable visible ($name); refusing to run."; exit 97; }
-          done
-          # The sandbox hides a denied directory behind an empty mount, so the
-          # directory itself can still exist. Refuse only if its contents are visible.
-          if [[ -r "$WIF_DIR/identity-token" ]] || [[ -n "$(ls -A "$WIF_DIR" 2>/dev/null)" ]]; then
-            echo "verify.sh: federation files accessible; refusing to run."
-            exit 97
-          fi
-          curl -s --noproxy '*' -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; exit 98; }
-          cd "$WORKSPACE" || exit 1
-          $CMD 2>&1 | tail -n 200
+          verify() {
+            for name in ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN \
+                        ANTHROPIC_IDENTITY_TOKEN_FILE ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+                        ACTIONS_ID_TOKEN_REQUEST_URL GH_TOKEN GITHUB_TOKEN \
+                        MULE_EE_USERNAME MULE_EE_PASSWORD JFROG_USER JFROG_PASSWORD; do
+              [[ -z "${!name:-}" ]] || { echo "verify.sh: credential variable visible ($name); refusing to run."; return 97; }
+            done
+            # The sandbox hides a denied directory behind an empty mount, so the
+            # directory itself can still exist. Refuse only if its contents are visible.
+            if [[ -r "$WIF_DIR/identity-token" ]] || [[ -n "$(ls -A "$WIF_DIR" 2>/dev/null)" ]]; then
+              echo "verify.sh: federation files accessible; refusing to run."
+              return 97
+            fi
+            curl -s --noproxy '*' -m 5 -o /dev/null https://example.com && { echo "verify.sh: network not restricted; refusing to run."; return 98; }
+            cd "$WORKSPACE" || return 1
+            $CMD
+          }
+          log=$(mktemp "$LOG_DIR/verify-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX") || exit 1
+          verify 2>&1 | tee "$log" | tail -n 200
           EOF
           } > /tmp/verify.sh
           sudo install -o root -g root -m 555 /tmp/verify.sh /usr/local/bin/verify.sh
@@ -253,7 +279,7 @@ jobs:
                 "enabled": true,
                 "failIfUnavailable": true,
                 "filesystem": {
-                  "allowWrite": ["~/.m2", "~/.gradle"],
+                  "allowWrite": ["~/.m2", "~/.gradle", "${{ runner.temp }}/fix-verification"],
                   "denyRead": ["${{ runner.temp }}/claude-workload-identity", "/proc"],
                   "denyWrite": ["${{ runner.temp }}/claude-workload-identity"]
                 },
@@ -262,7 +288,11 @@ jobs:
                   {"name": "ACTIONS_ID_TOKEN_REQUEST_TOKEN", "mode": "deny"},
                   {"name": "ANTHROPIC_IDENTITY_TOKEN_FILE", "mode": "deny"},
                   {"name": "GH_TOKEN", "mode": "deny"},
-                  {"name": "GITHUB_TOKEN", "mode": "deny"}
+                  {"name": "GITHUB_TOKEN", "mode": "deny"},
+                  {"name": "MULE_EE_USERNAME", "mode": "deny"},
+                  {"name": "MULE_EE_PASSWORD", "mode": "deny"},
+                  {"name": "JFROG_USER", "mode": "deny"},
+                  {"name": "JFROG_PASSWORD", "mode": "deny"}
                 ]}
               }
             }
@@ -308,6 +338,16 @@ jobs:
             If the requested outcome is unclear or missing information blocks a fix, return needs_clarification and put focused questions in the body. For no_changes, explain why no fix is necessary in the body. Always write both files. The publisher will post that body without applying code changes or creating a PR for either of these statuses, even if local partial edits exist.
             Do not claim checks passed unless they ran and passed. A run ends after posting questions; a maintainer must reply with a new @claude fix command to resume with the updated discussion.
             "
+
+      - name: Upload verification logs
+        if: ${{ !cancelled() && steps.verify-script.outcome == 'success' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: assistant-fix-verification
+          path: ${{ runner.temp }}/fix-verification/verify-*
+          if-no-files-found: ignore
+          retention-days: ${{ env.HANDOFF_RETENTION_DAYS }}
 
       - name: Prepare fix handoff
         env:
