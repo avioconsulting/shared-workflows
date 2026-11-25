@@ -116,15 +116,6 @@ jobs:
           mvn-mirrors: |    ## Maven Mirrors are supported from v6.2.0 onwards
             avio-mulesoft-ee-releases:https://avio.jfrog.io/artifactory/mulesoft-ee-releases/:mulesoft-ee-releases
 
-      - name: Set up JDK for baseline and verification
-        id: java
-        if: inputs.java-version != ''
-        uses: actions/setup-java@v6
-        with:
-          distribution: ${{ inputs.java-distribution }}
-          java-version: ${{ inputs.java-version }}
-          overwrite-settings: false
-
       # Trust the default-branch build. Clearing OIDC variables is defense in
       # depth, not isolation from the OIDC-enabled job. Dependencies stay local.
       - name: Warm dependencies (base branch)
