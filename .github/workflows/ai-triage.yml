@@ -32,6 +32,15 @@ jobs:
       issues: write
       id-token: write
     steps:
+      - name: Authorize requester
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const username = context.payload.sender.login;          // triage: opener or labeler
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ ...context.repo, username });
+            if (!['admin', 'write'].includes(data.permission)) {
+              core.setFailed(`${username} needs write access to run this workflow.`);
+            }
       - name: Checkout repository
         uses: actions/checkout@v7
         with:

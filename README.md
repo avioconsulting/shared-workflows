@@ -3,30 +3,28 @@ A repository to store the Github Actions shared workflows
 
 ## AI framework maintenance
 
-Two reusable workflows use the official [Claude Code Action](https://github.com/anthropics/claude-code-action/tree/main/examples).
-A third provides an alternative triage implementation using [GitHub Agentic Workflows (gh-aw)](https://github.github.com/gh-aw/):
+The Triage, Analyze, and Fix workflows use the official
+[Claude Code Action](https://github.com/anthropics/claude-code-action/tree/main/examples).
 
 | Workflow | Trigger in the calling repository | Result |
 | --- | --- | --- |
 | `ai-triage.yml` | Human-authored issue opened, or `needs-triage` label added by a writer | Labels and a concise triage comment |
-| `ai-assistant.yml` | New human-authored issue comment starting with `@claude analyze` or `@claude fix` | Analysis comment, or a fix branch and draft PR |
-| `ai-triage-gh-aw.lock.yml` | Human-authored issue opened | Labels and a workflow-managed triage comment, published through safe outputs |
-
-Choose one triage implementation per calling repository.
+| `ai-analyze.yml` | New human-authored issue comment starting with `@claude analyze` | Analysis comment |
+| `ai-fix.yml` | New human-authored issue comment starting with `@claude fix` | Fix branch and draft PR, or an issue reply if blocked |
 
 ### Setup
 
-1. For direct triage and the assistant, follow [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
-   In the Claude Console, register the GitHub OIDC issuer and create two
-   federation rules for a dedicated service account in a single maintenance workspace.
+1. Follow [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
+   In the Claude Console, register the GitHub OIDC issuer and create a
+   [federation rule for each enabled workflow](CLAUDE_WIF_GITHUB_ACTIONS.md).
    Match the `https://api.anthropic.com` audience, approved calling repositories and
    their protected default branches, and the exact reusable `job_workflow_ref`
    (including the shared workflow ref). Match `event_name` to `issues` for triage
-   and `issue_comment` for the assistant. Configure workspace spending limits.
+   and `issue_comment` for Analyze and Fix. Configure workspace spending limits.
 2. In **Settings → Secrets and variables → Actions → Variables** of each
    **calling repository**, set `ANTHROPIC_ORGANIZATION_ID`,
-   `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`, and
-   `ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID` as applicable. These identifiers are
+   `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`, `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID`,
+   and `ANTHROPIC_FIX_FEDERATION_RULE_ID` as applicable. These identifiers are
    not secrets. Organization-level variables scoped to approved callers also work.
    Add `id-token: write` to each caller job below and remove its API-key mapping
    or `secrets: inherit` if no other secrets are needed. Pilot against a reviewed
@@ -43,11 +41,9 @@ Choose one triage implementation per calling repository.
    the calling repository, subject to organization policy. The workflow creates
    PRs but does not approve or merge them.
 
-All three workflows use **Anthropic API billing**, charged to the organization
-associated with the federation rule or API key. The separate `gh-aw` alternative
-still uses `ANTHROPIC_API_KEY`; check for other consumers before revoking any
-existing key. Claude subscriptions do not fund this API usage. GitHub Actions
-runner usage is accounted for separately.
+These workflows use **Anthropic API billing**, charged to the organization
+associated with the federation rule. Claude subscriptions do not fund this API
+usage. GitHub Actions runner usage is accounted for separately.
 
 The shared repository must be accessible to the caller. The examples use `@main`;
 use the branch containing these workflows for a pilot, and a reviewed SHA for rollout.
@@ -70,37 +66,80 @@ jobs:
       triage-labels: bug,enhancement,question
 ```
 
-Create `.github/workflows/ai-assistant.yml` in the framework repository:
+Create `.github/workflows/ai-analyze.yml` in the framework repository:
 
 ```yaml
-name: AI Maintenance Assistant
+name: AI Maintenance Analyze
 on:
   issue_comment:
     types: [created]
 jobs:
-  Assistant:
-    uses: avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@main
+  Analyze:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-analyze.yml@main
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+```
+
+To enable fixes, create `.github/workflows/ai-fix.yml` separately:
+
+```yaml
+name: AI Maintenance Fix
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  Fix:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-fix.yml@main
     permissions:
       contents: write
       issues: write
       pull-requests: write
       id-token: write
+    with:
+      java-version: '17'
+      java-distribution: temurin
 ```
+
+Fix defaults to Temurin Java 8. Set `java-version` to the version your project
+requires; the default-branch baseline and offline verification use the same JDK.
+
+You can enable Analyze or Fix independently. The old `ai-assistant.yml` entry
+point is removed in this revision. Before rolling out the shared-workflow
+change, identify callers of that path (including `@main` callers), configure
+federation for the new paths, and coordinate the caller updates.
+
+If the default-branch Maven build needs private dependencies, explicitly map a
+read-only JFrog credential pair under the `Fix` caller job. The names on the
+right are examples; use your repository's actual secret names. Do not use
+`secrets: inherit`.
+
+```yaml
+    secrets:
+      JFROG_USER: ${{ secrets.JFROG_USER }}
+      JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+```
+
+Fix configures Maven server entries for `avio-releases` and
+`avio-mulesoft-ee-releases` that reference these JFROG credentials as AVIO REPO credentials. It mirrors the `mulesoft-ee-releases` repository ID
+through AVIO Artifactory using `avio-mulesoft-ee-releases`. If migrating a caller
+that used direct Mule EE credentials, use the read-only JFrog pair with access
+to that mirror instead; Fix does not accept `MULE_EE_*` secrets. Do not write
+resolved credentials to files on the runner.
 
 ### Inputs and execution limits
 
-All three workflows accept an optional `model` input. Their configured defaults
-are `claude-haiku-5-5` for direct triage, `claude-sonnet-4-5-20250929` for the
-assistant, and `claude-haiku-4-5` for gh-aw triage. Only the gh-aw alternative
-requires a named API-key secret.
+These workflows accept an optional `model` input. Triage defaults to
+`claude-haiku-5-5`; Analyze and Fix default to `claude-sonnet-5-5`.
 
 | Workflow | Additional inputs | Max turns | Claude CLI budget | Configured timeout |
 | --- | --- | --- | --- | --- |
 | `ai-triage.yml` | `triage-labels`: comma-separated classification labels | 12 | $1 | 10 minutes |
-| `ai-assistant.yml` | None | 30 per selected operation | $6 per selected operation | Routing: 5 minutes; Analyze: 35 minutes; Fix (including baseline): 60 minutes; fix publication: 10 minutes |
-| `ai-triage-gh-aw.lock.yml` | No additional user-facing inputs; labels configured in the Markdown source | 12 | $1 | 10 minutes for agent execution |
+| `ai-analyze.yml` | None | 30 | $6 | Acknowledge: 5 minutes; Analyze: 35 minutes |
+| `ai-fix.yml` | `java-version` (default `8`), `java-distribution` (default `temurin`) | 30 | $6 | Acknowledge: 5 minutes; Fix: 60 minutes; publication: 10 minutes |
 
-The direct-triage caller above explicitly sets `triage-labels` to
+The triage caller above explicitly sets `triage-labels` to
 `bug,enhancement,question`. The workflow's current default also includes
 `ai-triaged` and `"need information"`; these are operational labels, so keep them
 out of the classification input. The prompt handles those operational labels
@@ -110,13 +149,14 @@ None of these workflows exposes an `enabled` input. Disable a workflow by
 disabling its calling workflow in GitHub Actions or gating the caller job with
 an `if` condition. CLI budgets apply to individual agent invocations, not aggregate
 workflow, repository, or organization spending. Configure API spending limits
-separately; gh-aw can run additional model-backed processing outside the main
-triage invocation.
+separately.
+
+Fix currently declares `maven-args` but does not use it for warmup or verification.
 
 ### Triage behavior
 
-Both triage prompts use repository guidance and existing label descriptions, and
-request the following behavior:
+The triage prompt uses repository guidance and existing label descriptions, and
+requests the following behavior:
 
 - Prefer one supported classification, preserve existing labels, and abstain when
   the classification is unclear.
@@ -130,19 +170,17 @@ request the following behavior:
   necessary clarification, supported duplicate links, and one concrete next step.
 - Skip closed issues and avoid source changes, project-code execution, and fixes.
 
-Direct triage identifies its previous comment using the workflow bot's identity
+Triage identifies its previous comment using the workflow bot's identity
 and `<!-- ai-issue-triage:v1 -->` marker. On a rerun it skips another comment and
 completes only justified missing label additions. It adds `ai-triaged` after
-posting or confirming an existing triage comment. The gh-aw version instead
-submits an updated comment for automatic replacement and requests additive labels
-through safe outputs, which are processed after the agent finishes.
+posting or confirming an existing triage comment.
 
-For direct triage, issues opened by a user with repository write access are
-triaged automatically. The Claude Code Action's built-in write-access check
-rejects other issue creators; it is not bypassed. A user with write access can
-then add `needs-triage` to trigger triage, and that user's write access is checked
-by the action. Users with triage-only access cannot authorize a run. Runs are
-serialized per issue.
+Issues opened by a user with repository write access are triaged automatically.
+The workflow checks the event sender's write access
+before checkout, and the Claude Code Action also checks it before triage.
+For other issue creators, a user with write access can add `needs-triage` to
+request triage. Users with triage-only access cannot authorize a run. Runs
+are serialized per issue.
 
 ### Assistant commands and permissions
 
@@ -153,30 +191,31 @@ Post one of these commands on an issue:
 | `@claude analyze why this fails` | Investigate and comment with evidence, confirmed findings versus hypotheses, a suggested fix scope and regression test, compatibility risks, and missing information |
 | `@claude fix this bug` | Make focused code changes, run relevant checks, and create a draft PR with an issue reply |
 
-The `Assistant` routing job recognizes lowercase `@claude analyze` or
-`@claude fix` at the start of the comment, allowing leading whitespace. The
-operation must be followed by whitespace or the end of the comment; additional
-task details are optional. It selects only one downstream job from that initial
-command. A bare `@claude`, unsupported commands such as `@claude review`, and
-mentions elsewhere in the comment do not start an agent job.
+Each workflow's `Acknowledge` job matches its own command at the very start of
+the comment, with no leading whitespace. Use the command by itself or add a
+literal space before optional task details; a tab or newline immediately after
+the command is not a separator. Matching is case-insensitive. A bare `@claude`,
+unsupported commands such as `@claude review`, and mentions elsewhere in the
+comment do not start an agent job.
 
 Only newly created, human-authored **issue** comments are eligible. PR conversation
-comments, inline reviews, and comment edits are excluded. The Claude Code Action
-checks the requesting user's repository write access before running either agent.
+comments, inline reviews, and comment edits are excluded. Both workflows check
+repository write access before adding an eyes reaction and before checking out
+the project. The Claude Code Action also checks write access before running
+either agent.
 
 Each job receives only the permissions it needs:
 
 | Job | Contents | Issues | Pull requests | OIDC |
 | --- | --- | --- | --- | --- |
-| Assistant (routing) | None | None | None | No |
-| Acknowledge | None | Write | None | No |
+| Acknowledge (both workflows) | None | Write | None | No |
 | Analyze | Read | Write | None | Yes |
 | Fix | Read | Read | Read | Yes |
 | PublishFix | Write | Write | Write | No |
 
 Same-run artifact downloads do not require an additional `actions: read` grant. Both agents
 use explicit automation prompts, avoiding interactive branch setup. Checkout
-credentials remain unpersisted. Like direct triage, Analyze receives `GH_TOKEN`
+credentials remain unpersisted. Like triage, Analyze receives `GH_TOKEN`
 and posts findings directly using `gh issue comment`. Its instructions permit
 only one analysis comment as a GitHub change and prohibit file edits and
 project-code execution. Its tool allowlist permits file reads, `gh issue view`,
@@ -188,20 +227,29 @@ the issues-write permission is broader than the comment-only instruction.
 `Fix` runs the trusted default-branch baseline before Claude starts and keeps
 warmed dependencies on the same runner for offline verification. It unsets
 OIDC request variables for the warm-up shell, but the job itself has OIDC
-permission. Dependencies are not uploaded or cached across runs. Publication
-is handled by subsequent workflow steps:
+permission. Optional Maven credentials are scoped to the warm-up step and
+unset before a Gradle build. Claude sees only the baseline result, not the
+build output. The Claude sandbox denies `AVIO_REPO_USER` and `AVIO_REPO_PASSWORD`,
+and the offline verifier refuses to run if either is visible. This relies on the
+trusted baseline not persisting credentials on the shared runner. Fix does not
+upload dependencies or save or restore a cross-run Maven cache. If an earlier
+revision created Maven caches, remove those caches in the calling repositories.
+Publication is handled by subsequent workflow steps:
 
 1. Claude reads the triggering issue/comment and discussion, implements a focused
    fix, and runs relevant checks. It is instructed to leave changes uncommitted
    locally rather than create branches, push, open PRs, or post comments itself.
-   The agent job has only read permissions on GitHub.
+   The agent job has only read permissions on GitHub. The offline verifier uses
+   dependencies and plugins already warmed by the baseline. If a fix requires a new
+   dependency or version, the agent is instructed to request clarification.
 2. Claude writes `fix-pr-metadata.json` (status, plus title and commit message for
    `ready`) and
    `fix-pr-body.md` under `runner.temp/fix-agent`, outside the checkout. The requested body
    includes the change summary, tests and actual check results, limitations, and
    `Fixes #<issue-number>`.
 3. After a successful agent conclusion, the job uploads a binary-capable patch,
-   the checked-out base SHA, and the metadata as a one-day artifact. The separate
+   the checked-out base SHA, and the metadata as a one-day artifact. Available
+   offline verification logs are uploaded separately for one day. The separate
    PublishFix job checks out a clean default branch and downloads that handoff.
    An `actions/github-script` step requires status `ready`, `needs_clarification`,
    or `no_changes` and a nonempty body. Only `ready` proceeds to patch application
@@ -229,13 +277,12 @@ discussion. A plain reply does not trigger the assistant. For `no_changes`, the
 publisher posts the explanation without applying a patch or creating a PR.
 
 **CI triggering:** publication uses the repository's `GITHUB_TOKEN`. Its pushes
-and PR creation do not automatically trigger normal `push` or `pull_request`
-GitHub Actions workflows. If automatic follow-on CI is required, the publication
-flow needs an appropriately scoped GitHub App token or PAT; the current reusable
-workflow does not expose a separate publication-token secret. Also check that
-required `push` workflows' branch filters include the selected `fix/`, `feat/`,
-or `chore/` branch; `pull_request` branch filters match the base branch instead.
-Branch naming alone does not resolve the token limitation.
+do not start `push` workflows. Matching `pull_request` workflows for `opened`,
+`synchronize`, or `reopened` events [require approval to run](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+Approve those runs from the PR or use your repository's manual CI path. Fully
+automatic follow-on CI would require a publication change, such as an
+appropriately scoped GitHub App token; Fix does not expose a publication-token
+secret. Remember that `pull_request` branch filters match the base branch.
 
 ### Pilot boundaries
 
@@ -244,7 +291,7 @@ labels, analysis, the fix branch, draft PR metadata, the issue reply, and the
 chosen CI triggering arrangement before relying on the workflow. Local workflow
 linting does not verify live GitHub/model execution.
 
-Direct triage and the assistant use the Claude Code Action's built-in write-access
+Triage, Analyze, and Fix use the Claude Code Action's built-in write-access
 checks. Fix executes changed project code only through its sandboxed offline
 verifier. Confirm on the pilot runner that the verifier cannot reach the network,
 the OIDC request variables, or the federation token/cache. Confirm an unapproved
@@ -252,53 +299,8 @@ workflow ref is denied in Claude Console authentication history. Write-capable
 publication runs on a separate runner without OIDC and consumes only the
 patch/report and metadata. Human review and required checks still govern merges.
 
-### gh-aw triage comparison
-
-[`ai-triage-gh-aw.md`](.github/workflows/ai-triage-gh-aw.md) implements the same
-triage task with Claude and the main-agent limits listed above. Unlike the
-direct-action version, its agent has read-only
-GitHub access; gh-aw publishes through built-in safe outputs with a fixed label
-allowlist and replacement of its older triage comment. No custom scripts are used.
-The source sets `roles: all`, allowing triage for human issue authors without
-repository write access, unlike the direct Claude Code Action workflow.
-
-The Markdown is the editable source. GitHub runs the generated
-[`ai-triage-gh-aw.lock.yml`](.github/workflows/ai-triage-gh-aw.lock.yml).
-Use gh-aw v0.93.5 to recompile source changes:
-
-```sh
-gh aw compile ai-triage-gh-aw
-```
-
-Commit both the Markdown source and regenerated lock workflow.
-`.github/aw/actions-lock.json` records the compiler's action pin;
-`.gitattributes` marks generated workflow files. Do not hand-edit the lock workflow.
-
-To compare in a pilot, replace the triage caller job above with this job rather
-than running both against the same issue:
-
-```yaml
-  Triage:
-    uses: avioconsulting/shared-workflows/.github/workflows/ai-triage-gh-aw.lock.yml@main
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      pull-requests: write
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-The `model` input is supported; there is no `enabled` or `triage-labels` input.
-To customize labels, update both the `safe-outputs.add-labels.allowed` list and
-the triage instructions in the Markdown source, then recompile. Keep operational
-and classification label meanings distinct. All additions are requested in one
-`add_labels` call, and one `add_comment` call submits the complete triage comment.
-
-The additional caller permissions accommodate gh-aw's generated status and
-safe-output jobs, not its read-only agent. Use `gh aw compile` for compiler
-validation. Older actionlint versions may not understand generated constructs
-such as `concurrency.queue` and `job.workflow_*`.
+For a Maven project with private dependencies, confirm the baseline warms them
+on a fresh runner and verification succeeds offline without JFrog credentials.
 
 ## Adding workflows to a new project
 
