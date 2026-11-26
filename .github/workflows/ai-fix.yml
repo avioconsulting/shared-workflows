@@ -3,11 +3,16 @@ name: AI Maintenance Fix
 on:
   workflow_call:
     inputs:
-      model:
+      claude-model:
         description: Claude model to use
         required: false
         type: string
         default: claude-sonnet-5-5
+      claude-show-full-output:
+        description: Show full Claude Code output in the GitHub Actions log
+        required: false
+        type: boolean
+        default: false
       java-distribution:
         description: The Java Distribution to use, default 'temurin'
         required: false
@@ -204,6 +209,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_FIX_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          show_full_output: ${{ inputs.claude-show-full-output }}
           classify_inline_comments: 'false'
           settings: |
             {
@@ -278,7 +284,7 @@ jobs:
                - no_changes: one short paragraph with evidence (file:line).
           claude_args: |
             --setting-sources user
-            --model ${{ inputs.model }}
+            --model ${{ inputs.claude-model }}
             --max-turns 30
             --max-budget-usd 6
             --allowedTools "Bash(/usr/local/bin/verify.sh),Read,Write,Edit,Glob,Grep"

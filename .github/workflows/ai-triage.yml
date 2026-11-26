@@ -3,11 +3,16 @@ name: AI Issue Triage
 on:
   workflow_call:
     inputs:
-      model:
+      claude-model:
         description: Claude model to use
         required: false
         type: string
         default: claude-haiku-5-5
+      claude-show-full-output:
+        description: Show full Claude Code output in the GitHub Actions log
+        required: false
+        type: boolean
+        default: false
       classification-labels:
         description: Comma-separated classification labels the agent may choose from (must already exist)
         required: false
@@ -133,6 +138,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_TRIAGE_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          show_full_output: ${{ inputs.claude-show-full-output }}
           # Issue triage does not publish PR inline comments.
           classify_inline_comments: 'false'
           settings: |
@@ -193,7 +199,7 @@ jobs:
             Separate reported facts from hypotheses. Never claim a verified root cause, reproduction or fix.
           claude_args: |
             --setting-sources user
-            --model ${{ inputs.model }}
+            --model ${{ inputs.claude-model }}
             --max-turns 12
             --max-budget-usd 1
             --allowedTools "Read,Glob,Grep,Write,Bash(gh issue list:*),Bash(gh issue view:*)"

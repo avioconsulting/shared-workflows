@@ -3,11 +3,16 @@ name: AI Maintenance Analyze
 on:
   workflow_call:
     inputs:
-      model:
+      claude-model:
         description: Claude model to use
         required: false
         type: string
         default: claude-sonnet-5-5
+      claude-show-full-output:
+        description: Show full Claude Code output in the GitHub Actions log
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   Gate:
@@ -89,6 +94,7 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_ANALYZE_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
+          show_full_output: ${{ inputs.claude-show-full-output }}
           classify_inline_comments: 'false'
           settings: |
             {
@@ -135,7 +141,7 @@ jobs:
             ## Open questions  (numbered, answerable in one line)
           claude_args: |
             --setting-sources user
-            --model ${{ inputs.model }}
+            --model ${{ inputs.claude-model }}
             --max-turns 20
             --max-budget-usd 3
             --allowedTools "Read,Glob,Grep,Write"
