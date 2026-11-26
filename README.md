@@ -137,7 +137,7 @@ resolved credentials to files on the runner.
 These workflows accept an optional `claude-model` input. Triage defaults to
 `claude-haiku-5-5`; Analyze and Fix default to `claude-sonnet-5-5`.
 To debug a run, set `claude-show-full-output: true` in the calling job's `with:`
-block. This optional boolean defaults to `false`. Full output includes tool
+block and run the workflow with debug enabled. This optional boolean defaults to `false`. Full output includes tool
 results, which may contain sensitive data.
 
 Callers that override `model` must rename that input to `claude-model`.

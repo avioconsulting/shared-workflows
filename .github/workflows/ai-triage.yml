@@ -138,7 +138,8 @@ jobs:
           anthropic_federation_rule_id: ${{ vars.ANTHROPIC_TRIAGE_FEDERATION_RULE_ID }}
           anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
           github_token: ${{ github.token }}
-          show_full_output: ${{ inputs.claude-show-full-output }}
+          # Set parameter and Workflow must be run in debug mode to show full output
+          show_full_output: ${{ inputs.claude-show-full-output && runner.debug == '1' }}
           # Issue triage does not publish PR inline comments.
           classify_inline_comments: 'false'
           settings: |
