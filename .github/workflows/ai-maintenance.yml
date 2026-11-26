@@ -1,0 +1,137 @@
+name: AI Maintenance
+
+# Single entry point for triage, analyze and fix. Calling repositories subscribe to
+# issues: [opened] and issue_comment: [created] and call only this workflow; command
+# routing lives here. Each called workflow's Gate job still matches the exact command,
+# filters on author_association and checks write access.
+
+on:
+  workflow_call:
+    inputs:
+      enable-triage:
+        description: Run triage on opened issues and @claude triage
+        required: false
+        type: boolean
+        default: true
+      enable-analyze:
+        description: Run @claude analyze
+        required: false
+        type: boolean
+        default: true
+      enable-fix:
+        description: Run @claude fix and @claude implement
+        required: false
+        type: boolean
+        default: true
+      triage-model:
+        description: Claude model for triage
+        required: false
+        type: string
+        default: claude-haiku-5-5
+      analyze-model:
+        description: Claude model for analyze
+        required: false
+        type: string
+        default: claude-sonnet-5-5
+      fix-model:
+        description: Claude model for fix
+        required: false
+        type: string
+        default: claude-sonnet-5-5
+      claude-show-full-output:
+        description: Show full Claude Code output in the log (also requires debug logging)
+        required: false
+        type: boolean
+        default: false
+      classification-labels:
+        description: Comma-separated classification labels triage may choose from
+        required: false
+        type: string
+        default: bug,enhancement,question
+      info-label:
+        description: Label triage adds when more information is needed
+        required: false
+        type: string
+        default: need information
+      triaged-label:
+        description: Label triage adds after triage
+        required: false
+        type: string
+        default: ai-triaged
+      java-distribution:
+        description: Java distribution for fix verification
+        required: false
+        type: string
+        default: temurin
+      java-version:
+        description: Java version for fix verification
+        required: false
+        type: string
+        default: '8'
+    secrets:
+      JFROG_USER:
+        description: Read-only JFrog username for the fix workflow's Maven warmup
+        required: false
+      JFROG_PASSWORD:
+        description: Read-only JFrog password for the fix workflow's Maven warmup
+        required: false
+
+jobs:
+  Triage:
+    if: >-
+      inputs.enable-triage && (
+        github.event_name == 'issues' ||
+        github.event.comment.body == '@claude triage' ||
+        startsWith(github.event.comment.body, '@claude triage ')
+      )
+    uses: ./.github/workflows/ai-triage.yml
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    with:
+      claude-model: ${{ inputs.triage-model }}
+      claude-show-full-output: ${{ inputs.claude-show-full-output }}
+      classification-labels: ${{ inputs.classification-labels }}
+      info-label: ${{ inputs.info-label }}
+      triaged-label: ${{ inputs.triaged-label }}
+
+  Analyze:
+    if: >-
+      inputs.enable-analyze &&
+      github.event_name == 'issue_comment' && (
+        github.event.comment.body == '@claude analyze' ||
+        startsWith(github.event.comment.body, '@claude analyze ')
+      )
+    uses: ./.github/workflows/ai-analyze.yml
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    with:
+      claude-model: ${{ inputs.analyze-model }}
+      claude-show-full-output: ${{ inputs.claude-show-full-output }}
+
+  Fix:
+    if: >-
+      inputs.enable-fix &&
+      github.event_name == 'issue_comment' && (
+        github.event.comment.body == '@claude fix' ||
+        startsWith(github.event.comment.body, '@claude fix ') ||
+        github.event.comment.body == '@claude implement' ||
+        startsWith(github.event.comment.body, '@claude implement ')
+      )
+    uses: ./.github/workflows/ai-fix.yml
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    with:
+      claude-model: ${{ inputs.fix-model }}
+      claude-show-full-output: ${{ inputs.claude-show-full-output }}
+      java-distribution: ${{ inputs.java-distribution }}
+      java-version: ${{ inputs.java-version }}
+    secrets:
+      JFROG_USER: ${{ secrets.JFROG_USER }}
+      JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}

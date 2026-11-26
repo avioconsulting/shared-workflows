@@ -1,6 +1,8 @@
 # Claude Workload Identity Federation (WIF) for GitHub Actions
 
-How the AI workflows in `shared-workflows` — `ai-triage.yml` and `ai-assistant.yml` — authenticate to the Claude API without a static `ANTHROPIC_API_KEY`.
+How direct Triage, Analyze, and Fix authenticate to the Claude API without a
+static `ANTHROPIC_API_KEY`. The separate gh-aw triage workflow still uses an API
+key.
 
 ## Overview
 
@@ -24,25 +26,15 @@ GitHub runner ──(id-token: write)──► GitHub OIDC JWT (aud=https://api.
 
 ### Identity carried in a reusable workflow
 
-Both `ai-triage.yml` and `ai-assistant.yml` are reusable workflows (`on: workflow_call`) invoked from consumer repos:
+The workflows are called from consumer repos with `on: workflow_call`. The OIDC token is issued for the **caller repository's run**, not for `shared-workflows`. Match the exact `job_workflow_ref` for each enabled workflow:
 
-```yaml
-uses: avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@main
-uses: avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@main
-```
+| Workflow | `event_name` | `job_workflow_ref` | Actions variable |
+| --- | --- | --- | --- |
+| Triage | `issues` or `issue_comment` (via `condition`) | `avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main` | `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID` |
+| Analyze | `issue_comment` | `avioconsulting/shared-workflows/.github/workflows/ai-analyze.yml@refs/heads/main` | `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID` |
+| Fix | `issue_comment` | `avioconsulting/shared-workflows/.github/workflows/ai-fix.yml@refs/heads/main` | `ANTHROPIC_FIX_FEDERATION_RULE_ID` |
 
-The OIDC token is therefore issued for the **caller repository's run**, not for `shared-workflows`. The workflow that actually runs is identified by the `job_workflow_ref` claim:
-
-| Claim                 | `ai-triage.yml`                                                                   | `ai-assistant.yml`                                                                   |
-|-----------------------|-----------------------------------------------------------------------------------|--------------------------------------------------------------------------------------|
-| Caller trigger        | `issues` (`opened`, `labeled`)                                                    | `issue_comment` (`created`)                                                          |
-| `sub`                 | `repo:avioconsulting/<repo>:ref:refs/heads/main`                                  | `repo:avioconsulting/<repo>:ref:refs/heads/main`                                     |
-| `repository_owner`    | `avioconsulting`                                                                  | `avioconsulting`                                                                     |
-| `repository_owner_id` | `26659507`                                                                        | `26659507`                                                                           |
-| `event_name`          | `issues`                                                                          | `issue_comment`                                                                      |
-| `job_workflow_ref`    | `avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main` | `avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@refs/heads/main` |
-
-Both events run on the caller's default-branch ref, so `sub` is **identical** for the two workflows. `job_workflow_ref` (plus `event_name` as a secondary check) is what distinguishes them.
+All these events run on the caller's default-branch ref, so `sub` can be identical for runs from the same repository. Restrict the caller to approved repositories and protected default branches. An earlier rule for the combined workflow does not match the Analyze or Fix path.
 
 ## 1. Anthropic setup (Claude Console)
 
@@ -86,58 +78,83 @@ Controls which workflow runs may obtain a token. Single-repo example:
 
 ### Federation rules for the shared workflows (one per workflow)
 
-A per-repo `subject_prefix` doesn't fit reusable workflows called from many repos, and `sub` alone can't tell triage from assistant. Create **two rules**, each pinned to its own `job_workflow_ref`, so a token minted for one workflow can never authenticate the other.
+The `sub` claim alone cannot distinguish Triage, Analyze, and Fix. Create a
+separate rule for each enabled workflow (up to three), and match its exact
+`job_workflow_ref` and `event_name`. Triage runs on both `issues` (issue opened)
+and `issue_comment` (`@claude triage`). `match.claims` matches exactly one string
+value, so remove `event_name` from `claims` and allow both values in
+`match.condition`, a CEL expression over `claims` that must also pass. The examples below show one approved
+caller; constrain additional callers and their protected default branches
+explicitly rather than allowing the entire organization.
 
 **Triage rule** — `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`
 
+
 ```json
 {
-  "name": "gha-ai-triage",
-  "issuer_id": "fdis_...",
+  "name": "github-ai-triage",
+  "description": "AI Triage Workflow in GitHub Actions. When issues are created on AVIO Repos, this rule will match.",
+  "issuer_id": "fdis_01...",
+  "issuer_name": "github-actions",
   "match": {
-    "subject_prefix": "repo:avioconsulting/",
-    "audience": "https://api.anthropic.com",
-    "claims": {
-      "repository_owner": "avioconsulting",
-      "job_workflow_ref": "avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main",
-      "event_name": "issues"
-    }
+    "subject_prefix": null,
+    "audience": null,
+    "claims": null,
+    "condition": "claims.sub.startsWith(\"repo:avioconsulting/*\") && claims.repository_owner_id == 26659507 && claims.repository_owner == \"avioconsulting\" &&  \nclaims.refs == \"refs/heads/main\" && \nclaims.event_name in ['issues', 'issue_comment']"
   },
-  "target": { "type": "service_account", "service_account_id": "svac_triage..." },
-  "workspace_id": "wrkspc_...",
+  "attributes": null,
+  "target": {
+    "type": "service_account",
+    "service_account_id": "svac_01...",
+    "service_account_name": "github-ci-caller"
+  },
+  "workspace_id": "wrkspc_01...",
+  "applies_to_all_workspaces": false,
   "oauth_scope": "workspace:developer",
   "token_lifetime_seconds": 600
 }
 ```
 
-**Assistant rule** — `ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID`
+**Fix rule** — `ANTHROPIC_FIX_FEDERATION_RULE_ID`. For Analyze, create a
+separate rule using `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID` in the caller and
+the exact Analyze path from the table above.
 
 ```json
 {
-  "name": "gha-ai-assistant",
-  "issuer_id": "fdis_...",
+  "name": "github-ai-assistant",
+  "description": "Used for Fix and Analyze workflows in GitHub Actions",
+  "issuer_id": "fdis_01...",
+  "issuer_name": "github-actions",
   "match": {
-    "subject_prefix": "repo:avioconsulting/",
-    "audience": "https://api.anthropic.com",
+    "subject_prefix": "repo:avioconsulting/*",
+    "audience": null,
     "claims": {
+      "ref": "\"refs/heads/main\"",
+      "event_name": "issue_comment",
       "repository_owner": "avioconsulting",
-      "job_workflow_ref": "avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@refs/heads/main",
-      "event_name": "issue_comment"
-    }
+      "repository_owner_id": "26659507"
+    },
+    "condition": null
   },
-  "target": { "type": "service_account", "service_account_id": "svac_assistant..." },
-  "workspace_id": "wrkspc_...",
+  "attributes": null,
+  "target": {
+    "type": "service_account",
+    "service_account_id": "svac_01...",
+    "service_account_name": "github-ci-caller"
+  },
+  "workspace_id": "wrkspc_01...",
+  "applies_to_all_workspaces": false,
   "oauth_scope": "workspace:developer",
-  "token_lifetime_seconds": 1800
+  "token_lifetime_seconds": 600
 }
 ```
 
 Design notes:
 
-- **One issuer, two rules.** Both rules reference the same GitHub Actions issuer (`fdis_...`).
-- **Separate service accounts.** Usage and spend are attributed per workflow, and either can be revoked independently. Optionally place triage in its own workspace with a lower spend limit.
-- **Lifetime per workload.** Triage is a short, read-mostly run (600 s). The assistant's Fix job builds and runs longer agent turns (e.g. 1800 s).
-- **Pinned to `main`.** `@refs/heads/main` in `job_workflow_ref` means a modified copy of a workflow on another branch or in a fork cannot obtain a token.
+- **One issuer, one rule per enabled workflow.** The rules reference the same GitHub Actions issuer (`fdis_...`).
+- **Separate service accounts.** Usage and spend are attributed per workflow, and each identity can be revoked independently. Optionally place triage in its own workspace with a lower spend limit.
+- **Lifetime per workload.** Triage is a short, read-mostly run (600 s). Fix builds and runs longer agent turns (e.g. 1800 s).
+- **Match the selected ref.** The examples call `@main`, which appears as `@refs/heads/main` in `job_workflow_ref`. When piloting on another branch or pinning to a reviewed SHA, update the rule to match the ref actually used.
 - **Verify claim values.** After the first run, confirm the exact `job_workflow_ref` / `event_name` strings in the Console's authentication history and that the rule matches them.
 
 Also note your **Organization ID** (Settings → Organization).
@@ -150,11 +167,13 @@ Store the IDs as repository or organization **variables** (not secrets):
 |---|---|
 | `ANTHROPIC_ORGANIZATION_ID` | `00000000-0000-0000-0000-000000000000` |
 | `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID` | `fdrl_...` (triage rule) |
-| `ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID` | `fdrl_...` (assistant rule) |
-| `ANTHROPIC_SERVICE_ACCOUNT_ID` (optional) | `svac_...` |
-| `ANTHROPIC_WORKSPACE_ID` (if rule spans workspaces) | `wrkspc_...` |
+| `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID` | `fdrl_...` (Analyze rule) |
+| `ANTHROPIC_FIX_FEDERATION_RULE_ID` | `fdrl_...` (Fix rule) |
 
-**Caller workflows must grant `id-token: write`.** A reusable workflow cannot get more permissions than its caller gives it; if the caller's job-level `permissions` omit `id-token`, the `id-token: write` declared inside the shared workflow is downgraded to `none` and the OIDC fetch fails.
+**Caller workflows must grant `id-token: write`.** A reusable workflow cannot
+get more permissions than its caller grants. In each workflow, only the agent job
+requests OIDC; `Gate`, `Publish`, `PublishFix`, and `ReportFailure`
+do not.
 
 Caller for triage:
 
@@ -162,7 +181,9 @@ Caller for triage:
 name: AI Issue Triage
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
+  issue_comment:
+    types: [created]
 jobs:
   Triage:
     uses: avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@main
@@ -171,31 +192,14 @@ jobs:
       issues: write
       id-token: write
     with:
-      triage-labels: bug,enhancement,question
-    secrets: inherit
+      classification-labels: bug,enhancement,question
 ```
 
-Caller for the assistant:
-
-```yaml
-name: AI Maintenance Assistant
-on:
-  issue_comment:
-    types: [created]
-jobs:
-  Assistant:
-    uses: avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@main
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
-    secrets: inherit
-```
+Use the separate [Analyze and Fix caller examples](README.md#setup). WIF does not require `secrets: inherit`.
 
 ## 3. Workflow configuration
 
-### With `claude-code-action` (current approach in `ai-triage.yml` and `ai-assistant.yml`)
+### With `claude-code-action` (Analyze example)
 
 ```yaml
 permissions:
@@ -204,16 +208,10 @@ permissions:
   id-token: write   # required for the OIDC token
 
 steps:
-  - uses: anthropics/claude-code-action@<pinned-sha>
+  - uses: anthropics/claude-code-action@v1
     with:
-      # ai-triage.yml uses ANTHROPIC_TRIAGE_FEDERATION_RULE_ID
-      # ai-assistant.yml uses ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID
-      anthropic_federation_rule_id: ${{ vars.ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID }}
+      anthropic_federation_rule_id: ${{ vars.ANTHROPIC_ANALYZE_FEDERATION_RULE_ID }}
       anthropic_organization_id: ${{ vars.ANTHROPIC_ORGANIZATION_ID }}
-      # optional:
-      # anthropic_service_account_id: ${{ vars.ANTHROPIC_SERVICE_ACCOUNT_ID }}
-      # anthropic_workspace_id: ${{ vars.ANTHROPIC_WORKSPACE_ID }}
-      # anthropic_oidc_audience: https://api.anthropic.com   # default
       github_token: ${{ github.token }}
 ```
 
@@ -221,9 +219,11 @@ Action inputs:
 
 - `anthropic_federation_rule_id` — required
 - `anthropic_organization_id` — required
-- `anthropic_service_account_id` — add if the exchange fails without it
-- `anthropic_workspace_id` — needed when the rule covers multiple workspaces
-- `anthropic_oidc_audience` — override only if the rule expects a non-default audience
+
+The action also supports `anthropic_service_account_id`,
+`anthropic_workspace_id`, and `anthropic_oidc_audience`, but the current
+reusable workflows do not forward these inputs or corresponding caller
+variables. Use rules that do not require those overrides.
 
 **Do not** also set `anthropic_api_key` or `claude_code_oauth_token`: a static credential takes precedence and federation is silently skipped. With federation, `classify_inline_comments` is skipped.
 
@@ -247,7 +247,7 @@ steps:
 
 The SDK exchanges the JWT on first use and refreshes automatically. GitHub's JWT expires in ~5 minutes; for long jobs, re-run the fetch step to keep the file current.
 
-## 4. Hardening (applied in `ai-triage.yml` and `ai-assistant.yml`)
+## 4. Hardening
 
 Prevent the agent from reading or reusing the OIDC credentials:
 
@@ -267,7 +267,11 @@ Prevent the agent from reading or reusing the OIDC credentials:
 }
 ```
 
-Build steps that run project code also `unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN` as defense in depth.
+Fix unsets the OIDC request variables in the trusted default-branch warmup as
+defense in depth; the job still has OIDC permission. Changed project code runs
+through the sandboxed offline verifier, which refuses to run if OIDC request
+variables or federation files are visible. Publication runs in a separate job
+without OIDC and does not run project code.
 
 Rule-scoping guidance:
 
@@ -280,8 +284,8 @@ Rule-scoping guidance:
 - A failed exchange returns an opaque `401 authentication_error` / `Authentication failed`. Check **Settings → Workload identity → History** in the Console for the deny reason.
 - Most common: `match_subject_prefix` — the `sub` suffix varies by event (`ref:...`, `pull_request`, `environment:...`).
 - Missing `id-token: write` (in the job **or** the caller workflow) → no OIDC env vars, action can't fetch a token.
-- Wrong rule ID for the workflow (e.g. triage using the assistant rule) → `job_workflow_ref` / `event_name` claim mismatch.
-- Rule spans multiple workspaces → `workspace_id` required.
+- Wrong rule ID for the workflow (e.g. Analyze using the Fix rule) → `job_workflow_ref` / `event_name` claim mismatch.
+- Rule spans multiple workspaces → the exchange may require an explicit workspace ID; use a single-workspace rule with the current shared workflows.
 - Success returns `access_token` starting with `sk-ant-oat01-` plus `expires_in`.
 
 ## References
@@ -290,4 +294,4 @@ Rule-scoping guidance:
 - [Workload Identity Federation overview](https://platform.claude.com/docs/en/manage-claude/workload-identity-federation)
 - [GitHub OIDC subject claims](https://docs.github.com/en/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect#example-subject-claims)
 - `claude-code-action` docs: `docs/setup.md` → Workload Identity Federation
-- Implementation: [`.github/workflows/ai-triage.yml`](.github/workflows/ai-triage.yml), [`.github/workflows/ai-assistant.yml`](.github/workflows/ai-assistant.yml)
+- Implementation: [Triage](.github/workflows/ai-triage.yml), [Analyze](.github/workflows/ai-analyze.yml), and [Fix](.github/workflows/ai-fix.yml)

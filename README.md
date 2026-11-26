@@ -3,39 +3,40 @@ A repository to store the Github Actions shared workflows
 
 ## AI framework maintenance
 
-Two reusable workflows use the official [Claude Code Action](https://github.com/anthropics/claude-code-action/tree/main/examples).
-A third provides an alternative triage implementation using [GitHub Agentic Workflows (gh-aw)](https://github.github.com/gh-aw/):
+The Triage, Analyze, and Fix workflows use the official
+[Claude Code Action](https://github.com/anthropics/claude-code-action/tree/main/examples).
 
 | Workflow | Trigger in the calling repository | Result |
 | --- | --- | --- |
-| `ai-triage.yml` | Human-authored issue opened, or `needs-triage` label added by a writer | Labels and a concise triage comment |
-| `ai-assistant.yml` | New human-authored issue comment starting with `@claude analyze` or `@claude fix` | Analysis comment, or a fix branch and draft PR |
-| `ai-triage-gh-aw.lock.yml` | Human-authored issue opened | Labels and a workflow-managed triage comment, published through safe outputs |
-
-Choose one triage implementation per calling repository.
+| `ai-triage.yml` | Issue opened by a user with write access, or a new issue comment starting with `@claude triage` from one | Labels and a concise triage comment |
+| `ai-analyze.yml` | New human-authored issue comment starting with `@claude analyze` | Analysis comment |
+| `ai-fix.yml` | New human-authored issue comment starting with `@claude fix` or `@claude implement` | Branch and draft PR, or an issue reply if blocked |
+| `ai-maintenance.yml` | Recommended entry point: issue opened or any new issue comment | Routes to the three workflows above |
 
 ### Setup
 
-1. For direct triage and the assistant, follow [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
-   In the Claude Console, register the GitHub OIDC issuer and create two
-   federation rules for a dedicated service account in a single maintenance workspace.
+1. Follow [Use WIF with GitHub Actions](https://platform.claude.com/docs/en/manage-claude/wif-providers/github-actions).
+   In the Claude Console, register the GitHub OIDC issuer and create a
+   [federation rule for each enabled workflow](CLAUDE_WIF_GITHUB_ACTIONS.md).
    Match the `https://api.anthropic.com` audience, approved calling repositories and
    their protected default branches, and the exact reusable `job_workflow_ref`
-   (including the shared workflow ref). Match `event_name` to `issues` for triage
-   and `issue_comment` for the assistant. Configure workspace spending limits.
+   (including the shared workflow ref). Match `event_name` to `issue_comment` for
+   Analyze and Fix. Triage runs on both `issues` and `issue_comment`; because
+   `claims` matches one exact value, allow both with the rule's CEL `condition`:
+   `claims.event_name in ['issues', 'issue_comment']`. Configure workspace
+   spending limits.
 2. In **Settings → Secrets and variables → Actions → Variables** of each
    **calling repository**, set `ANTHROPIC_ORGANIZATION_ID`,
-   `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`, and
-   `ANTHROPIC_ASSISTANT_FEDERATION_RULE_ID` as applicable. These identifiers are
+   `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`, `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID`,
+   and `ANTHROPIC_FIX_FEDERATION_RULE_ID` as applicable. These identifiers are
    not secrets. Organization-level variables scoped to approved callers also work.
    Add `id-token: write` to each caller job below and remove its API-key mapping
    or `secrets: inherit` if no other secrets are needed. Pilot against a reviewed
    shared-workflow ref with matching Console rules before moving existing callers.
-3. Precreate `bug`, `enhancement`, `question`, `ai-triaged`, `need information`,
-   and `needs-triage` labels in the calling repository. For custom classifications,
-   create those labels and describe their meaning in repository guidance or label
-   descriptions. Adding `needs-triage` is the maintainer approval for issues opened
-   by users without write access.
+3. Precreate `bug`, `enhancement`, `question`, `ai-triaged`, and `need information`
+   labels in the calling repository. For custom classifications, create those
+   labels and describe their meaning in repository guidance or label descriptions.
+   Triage skips labels that do not exist. The `needs-triage` label is no longer used.
 4. Add repository guidance in `AGENTS.md` and a `CLAUDE.md` that imports `@AGENTS.md`.
    Keep framework-specific triage requirements in that guidance and issue templates.
 5. For automatic fix PRs, enable **Settings → Actions → General → Workflow
@@ -43,22 +44,160 @@ Choose one triage implementation per calling repository.
    the calling repository, subject to organization policy. The workflow creates
    PRs but does not approve or merge them.
 
-All three workflows use **Anthropic API billing**, charged to the organization
-associated with the federation rule or API key. The separate `gh-aw` alternative
-still uses `ANTHROPIC_API_KEY`; check for other consumers before revoking any
-existing key. Claude subscriptions do not fund this API usage. GitHub Actions
-runner usage is accounted for separately.
+These workflows use **Anthropic API billing**, charged to the organization
+associated with the federation rule. Claude subscriptions do not fund this API
+usage. GitHub Actions runner usage is accounted for separately.
 
 The shared repository must be accessible to the caller. The examples use `@main`;
 use the branch containing these workflows for a pilot, and a reviewed SHA for rollout.
 
-Create `.github/workflows/ai-triage.yml` in the framework repository:
+### Calling the workflows
+
+A calling repository uses **one** of two approaches:
+
+| | Option A: single entry point (recommended) | Option B: individual workflows |
+| --- | --- | --- |
+| Caller files | One, calling `ai-maintenance.yml` | One per workflow, calling `ai-triage.yml`, `ai-analyze.yml`, and/or `ai-fix.yml` |
+| Command names in the caller | Only in the optional, cosmetic [`run-name`](#run-titles-run-name) | Only in an optional, cosmetic `run-name` |
+| Runs per issue comment | One | One per caller; callers for other commands show as skipped |
+| Turning a workflow off | `enable-triage` / `enable-analyze` / `enable-fix: false` | Omit or disable that caller |
+| Model input | `triage-model`, `analyze-model`, `fix-model` | `claude-model` on each workflow |
+| Federation rules | Same for both: one rule per workflow, matching `ai-triage.yml`, `ai-analyze.yml`, or `ai-fix.yml` | |
+
+Do not combine the approaches for the same workflow in one repository. If both
+an entry-point caller and an individual caller handle the same command, the agent
+runs twice: two triage comments, or two fix runs competing for the same branch.
+Either way, each workflow's `Gate` job matches the exact command, filters on
+`author_association`, and checks write access, so routing in the caller never
+grants access on its own.
+
+#### Option A: single entry point
+
+Create a single `.github/workflows/ai-maintenance.yml` in the framework repository.
+It calls the shared [`ai-maintenance.yml`](.github/workflows/ai-maintenance.yml)
+entry point, which routes each event to Triage, Analyze, or Fix. Command routing
+and authorization live only in the shared workflows, and each opened issue or new
+comment creates one workflow run. (GitHub cannot filter `issue_comment` events by comment text,
+so separate callers would each start a skipped run for every comment.)
+
+```yaml
+name: AI Maintenance
+# Cosmetic run title; see "Run titles" below.
+run-name: >-
+  ${{
+    (github.event_name == 'issues' && format('triage #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude triage') && format('triage #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude analyze') && format('analyze #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude fix') && format('fix #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude implement') && format('implement #{0}', github.event.issue.number)) ||
+    format('comment #{0}', github.event.issue.number)
+  }}
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+jobs:
+  AI:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-maintenance.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    with:
+      java-version: '17'
+      java-distribution: temurin
+```
+
+##### Run titles (`run-name`)
+
+**Why:** with one caller, every run in the Actions list would otherwise be titled
+`AI Maintenance`, and you would have to open each run to see whether it triaged,
+analyzed, or fixed an issue, or did nothing.
+
+**What it provides:** a readable title per run, derived from the event and the
+comment's command. It is purely cosmetic: it does not decide which job runs, and
+it grants nothing.
+
+| Event | Run title |
+| --- | --- |
+| Issue #42 opened | `triage #42` |
+| Comment `@claude triage` on #42 | `triage #42` |
+| Comment `@claude analyze why this fails` on #42 | `analyze #42` |
+| Comment `@claude fix` on #42 | `fix #42` |
+| Comment `@claude implement retries` on #42 | `implement #42` |
+| Any other comment on #42, such as `Thanks!` | `comment #42` (all jobs skipped) |
+
+**Why it must be in the calling repository:**
+
+- GitHub sets a run's title only from the `run-name` of the top-level (calling)
+  workflow. A called workflow's `run-name` is ignored, and no API renames a run
+  after it starts, so `ai-maintenance.yml` cannot set the title.
+- GitHub expressions have no split, substring, or replace function, so `run-name`
+  cannot extract "the second word" of a comment generically. Each command name
+  has to be listed with `startsWith`.
+- The full comment body is not used as a title because comments can be long and
+  multi-line.
+
+**What happens if commands change:** the shared workflows remain the source of
+truth. If a command is renamed or added there, callers keep working: routing,
+authorization, and the agent run are unaffected. Only the title is stale. An
+unlisted command is titled `comment #42`, and a renamed one may keep its old
+label, until the caller's `run-name` is updated. Because `startsWith` is looser
+than the real match, a comment such as `@claude fixed it` is titled `fix #42`
+even though no job runs.
+
+`run-name` is optional. Without it, runs are titled `AI Maintenance`; open a run
+to see which job ran (for example `AI / Analyze / Gate`). The same technique works
+for Option B callers.
+
+The caller grants the union of permissions the three workflows need. Each job
+inside the entry point, and each job inside Triage, Analyze, and Fix, declares
+its own narrower permissions, as listed under
+[Assistant commands and permissions](#assistant-commands-and-permissions).
+The entry point only routes events: each workflow's `Gate` job still matches the
+exact command, filters on `author_association`, and checks write access.
+
+Federation rules stay per workflow. A job's OIDC `job_workflow_ref` names the
+workflow file that defines the job, so the agent jobs should still present
+`ai-triage.yml`, `ai-analyze.yml`, or `ai-fix.yml`, not `ai-maintenance.yml`.
+Confirm this in the token claims (Console authentication history) on the first
+run through the entry point.
+
+`ai-maintenance.yml` inputs (all optional):
+
+| Input | Default | Purpose |
+| --- | --- | --- |
+| `enable-triage`, `enable-analyze`, `enable-fix` | `true` | Turn a workflow off for this repository |
+| `triage-model` / `analyze-model` / `fix-model` | `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-sonnet-5-5` | Claude model per workflow |
+| `classification-labels`, `info-label`, `triaged-label` | `bug,enhancement,question`, `need information`, `ai-triaged` | Triage labels |
+| `java-version`, `java-distribution` | `8`, `temurin` | JDK for Fix |
+| `claude-show-full-output` | `false` | Print the full agent transcript; also requires debug logging |
+
+It also accepts the optional `JFROG_USER` and `JFROG_PASSWORD` secrets and passes
+them only to Fix.
+
+#### Option B: individual workflows
+
+Create a caller only for each workflow you want. Each workflow checks its own
+command, so callers need no command conditions. Every caller starts a run for
+every new issue comment; runs for other commands finish as skipped. The optional
+`run-name` labels those runs.
+
+`.github/workflows/ai-triage.yml`:
 
 ```yaml
 name: AI Issue Triage
+run-name: >-
+  ${{ github.event_name == 'issues'
+      && format('Triage #{0}', github.event.issue.number)
+      || format('Triage check #{0}', github.event.issue.number) }}
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
+  issue_comment:
+    types: [created]
 jobs:
   Triage:
     uses: avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@main
@@ -67,82 +206,163 @@ jobs:
       issues: write
       id-token: write
     with:
-      triage-labels: bug,enhancement,question
+      classification-labels: bug,enhancement,question
 ```
 
-Create `.github/workflows/ai-assistant.yml` in the framework repository:
+`.github/workflows/ai-analyze.yml`:
 
 ```yaml
-name: AI Maintenance Assistant
+name: AI Maintenance Analyze
 on:
   issue_comment:
     types: [created]
 jobs:
-  Assistant:
-    uses: avioconsulting/shared-workflows/.github/workflows/ai-assistant.yml@main
+  Analyze:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-analyze.yml@main
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+```
+
+`.github/workflows/ai-fix.yml`:
+
+```yaml
+name: AI Maintenance Fix
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  Fix:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-fix.yml@main
     permissions:
       contents: write
       issues: write
       pull-requests: write
       id-token: write
+    with:
+      java-version: '17'
+      java-distribution: temurin
 ```
+
+Each individual workflow accepts `claude-model` and `claude-show-full-output`;
+Triage also accepts `classification-labels`, `info-label`, and `triaged-label`,
+and Fix accepts `java-version`, `java-distribution`, and the JFrog secrets.
+
+#### Common settings
+
+Fix defaults to Temurin Java 8. Set `java-version` to the version your project
+requires; the default-branch baseline and offline verification use the same JDK.
+
+The older combined `ai-assistant.yml` (replaced by `ai-maintenance.yml`) is removed in this revision. Before
+rolling out the shared-workflow change, identify callers of that path (including
+`@main` callers), configure federation for the new paths, and coordinate the
+caller updates.
+
+If the default-branch Maven build needs private dependencies, explicitly map a
+read-only JFrog credential pair under the caller job that runs Fix (`AI` in
+Option A, `Fix` in Option B). The names on the
+right are examples; use your repository's actual secret names. Do not use
+`secrets: inherit`.
+
+```yaml
+    secrets:
+      JFROG_USER: ${{ secrets.JFROG_USER }}
+      JFROG_PASSWORD: ${{ secrets.JFROG_PASSWORD }}
+```
+
+Fix configures Maven server entries for `avio-releases` and
+`avio-mulesoft-ee-releases` that reference these JFROG credentials as AVIO REPO credentials. It mirrors the `mulesoft-ee-releases` repository ID
+through AVIO Artifactory using `avio-mulesoft-ee-releases`. If migrating a caller
+that used direct Mule EE credentials, use the read-only JFrog pair with access
+to that mirror instead; Fix does not accept `MULE_EE_*` secrets. Do not write
+resolved credentials to files on the runner.
 
 ### Inputs and execution limits
 
-All three workflows accept an optional `model` input. Their configured defaults
-are `claude-haiku-5-5` for direct triage, `claude-sonnet-4-5-20250929` for the
-assistant, and `claude-haiku-4-5` for gh-aw triage. Only the gh-aw alternative
-requires a named API-key secret.
+The individual workflows accept an optional `claude-model` input; through the
+entry point, use `triage-model`, `analyze-model`, or `fix-model`. Triage defaults
+to `claude-haiku-5-5`; Analyze and Fix default to `claude-sonnet-5-5`.
+To debug a run, set `claude-show-full-output: true` in the calling job's `with:`
+block and run the workflow with debug enabled. This optional boolean defaults to `false`. Full output includes tool
+results, which may contain sensitive data.
+
+Callers that override `model` must rename that input to `claude-model`.
 
 | Workflow | Additional inputs | Max turns | Claude CLI budget | Configured timeout |
 | --- | --- | --- | --- | --- |
-| `ai-triage.yml` | `triage-labels`: comma-separated classification labels | 12 | $1 | 10 minutes |
-| `ai-assistant.yml` | None | 30 per selected operation | $6 per selected operation | Routing: 5 minutes; Analyze: 35 minutes; Fix (including baseline): 60 minutes; fix publication: 10 minutes |
-| `ai-triage-gh-aw.lock.yml` | No additional user-facing inputs; labels configured in the Markdown source | 12 | $1 | 10 minutes for agent execution |
+| `ai-triage.yml` | `classification-labels` (default `bug,enhancement,question`), `info-label` (default `need information`), `triaged-label` (default `ai-triaged`) | 12 | $1 | Gate: 5 minutes; Triage: 10 minutes; Publish: 5 minutes |
+| `ai-analyze.yml` | None | 20 | $3 | Gate: 5 minutes; Analyze: 20 minutes |
+| `ai-fix.yml` | `java-version` (default `8`), `java-distribution` (default `temurin`) | 30 | $6 | Gate: 5 minutes; Fix: 60 minutes; publication: 10 minutes |
+| `ai-maintenance.yml` | See [Option A](#option-a-single-entry-point) | Per routed workflow | Per routed workflow | Per routed workflow |
 
-The direct-triage caller above explicitly sets `triage-labels` to
-`bug,enhancement,question`. The workflow's current default also includes
-`ai-triaged` and `"need information"`; these are operational labels, so keep them
-out of the classification input. The prompt handles those operational labels
-separately. All labels must already exist; triage skips missing labels.
+`classification-labels` lists the labels the agent may choose as a classification.
+`info-label` and `triaged-label` are operational labels managed by the workflow;
+keep them out of `classification-labels`. All labels must already exist; triage
+skips missing labels. The former `triage-labels` input was removed, and a caller
+that still passes it fails; rename it to `classification-labels`.
 
 None of these workflows exposes an `enabled` input. Disable a workflow by
 disabling its calling workflow in GitHub Actions or gating the caller job with
 an `if` condition. CLI budgets apply to individual agent invocations, not aggregate
 workflow, repository, or organization spending. Configure API spending limits
-separately; gh-aw can run additional model-backed processing outside the main
-triage invocation.
+separately.
+
+Fix currently declares `maven-args` but does not use it for warmup or verification.
 
 ### Triage behavior
 
-Both triage prompts use repository guidance and existing label descriptions, and
-request the following behavior:
+Triage runs in three jobs. `Gate` checks the requester's write access. `Triage` runs
+the agent with read-only issue access: it reads the issue, labels, repository
+guidance and issue templates, searches for duplicates with `gh issue list` and
+`gh issue view`, and writes a classification and a comment to files. `Publish`
+validates that result and applies it, so label rules are enforced by the workflow
+rather than the prompt.
 
-- Prefer one supported classification, preserve existing labels, and abstain when
-  the classification is unclear.
-- Request `need information` only when missing details block the next step.
-  Assess bugs, enhancements, and questions differently; ask at most three focused
-  questions rather than requiring reproduction steps for every issue.
-- Search open and closed issues using at most two targeted searches and inspect
-  at most three strong duplicate candidates. Link potential duplicates with an
-  explanation; do not close issues or label them as duplicates.
-- Produce a comment normally 100–180 words, capped at 250, with a summary,
-  necessary clarification, supported duplicate links, and one concrete next step.
-- Skip closed issues and avoid source changes, project-code execution, and fixes.
+| Event | Requester | Result |
+| --- | --- | --- |
+| Issue opened | Opener has write access | Initial triage |
+| Issue opened | Opener is not an owner, member, or collaborator | Job skipped; a collaborator can comment `@claude triage` |
+| Issue opened | Opener is a member or collaborator without write access | Run notice only; nothing is posted |
+| `@claude triage [input]` comment | Commenter has write access | Retriage using the input |
+| `@claude triage` comment | Commenter is not an owner, member, or collaborator | Job skipped |
+| `@claude triage` comment | Commenter is a member or collaborator without write access | Run fails; nothing is posted |
 
-Direct triage identifies its previous comment using the workflow bot's identity
-and `<!-- ai-issue-triage:v1 -->` marker. On a rerun it skips another comment and
-completes only justified missing label additions. It adds `ai-triaged` after
-posting or confirming an existing triage comment. The gh-aw version instead
-submits an updated comment for automatic replacement and requests additive labels
-through safe outputs, which are processed after the agent finishes.
+The agent:
 
-For direct triage, issues opened by a user with repository write access are
-triaged automatically. The Claude Code Action's built-in write-access check
-rejects other issue creators; it is not bypassed. A user with write access can
-then add `needs-triage` to trigger triage, and that user's write access is checked
-by the action. Users with triage-only access cannot authorize a run. Runs are
-serialized per issue.
+- Chooses one classification from `classification-labels`, or none when unclear.
+- Asks at most three questions, only for information that blocks the next step,
+  assessing bugs, enhancements and questions differently.
+- Runs at most two duplicate searches and inspects at most three candidates. It
+  links potential duplicates but never closes or labels them.
+- Writes a 100–180 word comment (maximum 250) with **Summary** (**Update** on
+  retriage), **Information needed**, **Potential duplicates** and **Next step**,
+  omitting empty sections.
+
+On retriage, text after `@claude triage` takes priority over the issue text and
+earlier triage. The agent treats questions answered since the last triage as
+resolved and asks only what is still missing. Use it to triage an outside
+reporter's issue, correct a classification, or refresh triage after the reporter
+replies.
+
+`Publish`:
+
+- Uses only labels listed in `classification-labels` that exist in the repository.
+- For initial triage, posts at most one comment per issue (a `github-actions[bot]`
+  comment containing `<!-- ai-issue-triage:v1`) and never replaces an existing
+  classification.
+- For retriage, always posts a new comment that links the request, may replace the
+  classification, and removes `info-label` when nothing is still missing.
+- Adds `info-label` when information is needed and `triaged-label` after each
+  triage. Labels that do not exist are skipped.
+
+`ai-triaged` records that triage ran; it is not acceptance, prioritization, or
+proof that the issue is reproducible. Search `is:issue is:open -label:ai-triaged`
+to find issues, such as those from outside reporters, that still need
+`@claude triage`.
+
+Triage runs are serialized per issue. Triage failures are not reported on the
+issue, to avoid noise on reporters' issues.
 
 ### Assistant commands and permissions
 
@@ -150,63 +370,97 @@ Post one of these commands on an issue:
 
 | Command | Behavior |
 | --- | --- |
-| `@claude analyze why this fails` | Investigate and comment with evidence, confirmed findings versus hypotheses, a suggested fix scope and regression test, compatibility risks, and missing information |
+| `@claude triage` or `@claude triage <input>` | Retriage the issue using the input; see [Triage behavior](#triage-behavior) |
+| `@claude analyze why this fails` | Investigate and comment (under 400 words) with a summary, linked evidence, assumptions, a file-level change plan, test cases, risks, and open questions |
 | `@claude fix this bug` | Make focused code changes, run relevant checks, and create a draft PR with an issue reply |
+| `@claude implement this feature` | Use the same workflow and checks to implement a feature |
 
-The `Assistant` routing job recognizes lowercase `@claude analyze` or
-`@claude fix` at the start of the comment, allowing leading whitespace. The
-operation must be followed by whitespace or the end of the comment; additional
-task details are optional. It selects only one downstream job from that initial
-command. A bare `@claude`, unsupported commands such as `@claude review`, and
-mentions elsewhere in the comment do not start an agent job.
+Each workflow's `Gate` job matches its supported commands at the very start of
+the comment, with no leading whitespace. Use the command by itself or add a
+literal space before optional task details; a tab or newline immediately after
+the command is not a separator. Matching is case-insensitive. A bare `@claude`,
+unsupported commands such as `@claude review`, and mentions elsewhere in the
+comment do not start an agent job.
 
 Only newly created, human-authored **issue** comments are eligible. PR conversation
-comments, inline reviews, and comment edits are excluded. The Claude Code Action
-checks the requesting user's repository write access before running either agent.
+comments, inline reviews, and comment edits are excluded.
+
+Authorization has two layers:
+
+1. **Pre-filter in the job condition.** The `Gate` job runs only when the author's
+   `author_association` (the comment author, or the issue author for a newly
+   opened issue) is `OWNER`, `MEMBER`, or `COLLABORATOR`. Other authors are
+   skipped without starting a runner. This is not a permission check: members
+   and collaborators with read or triage access pass it.
+2. **Write-access check.** The `Gate` job's *Authorize requester* step, which is
+   the same in all three workflows, calls the GitHub API for the requester (the
+   event sender) and requires `write` or `admin` permission. For a command it
+   fails the run if the check fails, and otherwise adds an eyes reaction before
+   any agent job starts. For a newly opened issue, triage instead skips quietly
+   with a run notice. The Claude Code Action also checks write access before running
+   an agent.
+
+An org member whose membership is private may appear as `CONTRIBUTOR` and be
+skipped by the pre-filter. Verify on a pilot repository; if this happens, make the
+membership public or add `CONTRIBUTOR` to the pre-filter list.
 
 Each job receives only the permissions it needs:
 
 | Job | Contents | Issues | Pull requests | OIDC |
 | --- | --- | --- | --- | --- |
-| Assistant (routing) | None | None | None | No |
-| Acknowledge | None | Write | None | No |
-| Analyze | Read | Write | None | Yes |
+| Gate (all three workflows) | None | Write | None | No |
+| Triage | Read | Read | None | Yes |
+| Publish (Triage) | None | Write | None | No |
+| Analyze | Read | Write (posting step only) | None | Yes |
 | Fix | Read | Read | Read | Yes |
 | PublishFix | Write | Write | Write | No |
+| ReportFailure (Analyze and Fix) | None | Write | None | No |
 
-Same-run artifact downloads do not require an additional `actions: read` grant. Both agents
+Same-run artifact downloads do not require an additional `actions: read` grant. All agents
 use explicit automation prompts, avoiding interactive branch setup. Checkout
-credentials remain unpersisted. Like direct triage, Analyze receives `GH_TOKEN`
-and posts findings directly using `gh issue comment`. Its instructions permit
-only one analysis comment as a GitHub change and prohibit file edits and
-project-code execution. Its tool allowlist permits file reads, `gh issue view`,
-and `gh issue comment`. The contents-read token cannot push repository changes;
-the issues-write permission is broader than the comment-only instruction.
+credentials remain unpersisted. No agent posts to GitHub itself: each writes its
+result to a file, and a later workflow step publishes it. The Analyze agent's
+tools are limited to `Read`, `Glob`, `Grep`, and `Write`; a final step posts
+`analysis.md` with a link to the triggering comment and an
+`<!-- ai-analyze:v1 ... -->` marker. The Triage agent additionally has read-only
+`gh issue list` and `gh issue view` for duplicate search. If Analyze or Fix fails,
+`ReportFailure` comments on the issue with a link to the run; cancelled runs are
+not reported.
 
 ### Fix publication
 
 `Fix` runs the trusted default-branch baseline before Claude starts and keeps
 warmed dependencies on the same runner for offline verification. It unsets
 OIDC request variables for the warm-up shell, but the job itself has OIDC
-permission. Dependencies are not uploaded or cached across runs. Publication
-is handled by subsequent workflow steps:
+permission. Optional Maven credentials are scoped to the warm-up step and
+unset before a Gradle build. Claude sees only the baseline result, not the
+build output. The Claude sandbox denies `AVIO_REPO_USER` and `AVIO_REPO_PASSWORD`,
+and the offline verifier refuses to run if either is visible. This relies on the
+trusted baseline not persisting credentials on the shared runner. Fix does not
+upload dependencies or save or restore a cross-run Maven cache. If an earlier
+revision created Maven caches, remove those caches in the calling repositories.
+Publication is handled by subsequent workflow steps:
 
 1. Claude reads the triggering issue/comment and discussion, implements a focused
    fix, and runs relevant checks. It is instructed to leave changes uncommitted
    locally rather than create branches, push, open PRs, or post comments itself.
-   The agent job has only read permissions on GitHub.
+   The agent job has only read permissions on GitHub. The offline verifier uses
+   dependencies and plugins already warmed by the baseline. If a fix requires a new
+   dependency or version, the agent is instructed to request clarification.
 2. Claude writes `fix-pr-metadata.json` (status, plus title and commit message for
    `ready`) and
    `fix-pr-body.md` under `runner.temp/fix-agent`, outside the checkout. The requested body
    includes the change summary, tests and actual check results, limitations, and
    `Fixes #<issue-number>`.
 3. After a successful agent conclusion, the job uploads a binary-capable patch,
-   the checked-out base SHA, and the metadata as a one-day artifact. The separate
+   the checked-out base SHA, and the metadata as a one-day artifact. Available
+   offline verification logs are uploaded separately for one day. The separate
    PublishFix job checks out a clean default branch and downloads that handoff.
    An `actions/github-script` step requires status `ready`, `needs_clarification`,
    or `no_changes` and a nonempty body. Only `ready` proceeds to patch application
    and PR creation, after validating nonempty single-line title/commit-message
-   fields and a title of at most 256 characters. PR publication stops if
+   fields. A title or commit message longer than 72 characters is shortened at a
+   word boundary, with a warning, rather than failing the run. PR publication stops if
    the default branch has moved since the agent's checkout; request a fresh fix.
    The publisher checks and applies the patch without running project code.
 4. `peter-evans/create-pull-request@v8.1.1` commits and pushes the changes to
@@ -224,81 +478,36 @@ patch application and PR creation, even when the handoff contains partial edits.
 When there are partial edits, the comment links to the patch bundle and workflow
 run, gives the approximate expiration time, and includes a hidden marker with
 the run and artifact IDs.
-Reply with `@claude fix` and the answers to start a fresh run that reads the updated
-discussion. A plain reply does not trigger the assistant. For `no_changes`, the
+Reply with `@claude fix` or `@claude implement` followed by the answers to start
+a fresh run that reads the updated discussion. A plain reply does not trigger the assistant. For `no_changes`, the
 publisher posts the explanation without applying a patch or creating a PR.
 
 **CI triggering:** publication uses the repository's `GITHUB_TOKEN`. Its pushes
-and PR creation do not automatically trigger normal `push` or `pull_request`
-GitHub Actions workflows. If automatic follow-on CI is required, the publication
-flow needs an appropriately scoped GitHub App token or PAT; the current reusable
-workflow does not expose a separate publication-token secret. Also check that
-required `push` workflows' branch filters include the selected `fix/`, `feat/`,
-or `chore/` branch; `pull_request` branch filters match the base branch instead.
-Branch naming alone does not resolve the token limitation.
+do not start `push` workflows. Matching `pull_request` workflows for `opened`,
+`synchronize`, or `reopened` events [require approval to run](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow).
+Approve those runs from the PR or use your repository's manual CI path. Fully
+automatic follow-on CI would require a publication change, such as an
+appropriately scoped GitHub App token; Fix does not expose a publication-token
+secret. Remember that `pull_request` branch filters match the base branch.
 
 ### Pilot boundaries
 
-Try triage, `@claude analyze`, and `@claude fix` on a trusted issue first. Confirm
+Try triage (including `@claude triage` on an outside reporter's issue), `@claude analyze`, and `@claude fix` on a trusted issue first. Confirm
 labels, analysis, the fix branch, draft PR metadata, the issue reply, and the
 chosen CI triggering arrangement before relying on the workflow. Local workflow
 linting does not verify live GitHub/model execution.
 
-Direct triage and the assistant use the Claude Code Action's built-in write-access
-checks. Fix executes changed project code only through its sandboxed offline
+Triage, Analyze, and Fix use an `author_association` pre-filter, their own
+write-access check, and the Claude Code Action's built-in write-access checks.
+Confirm that a maintainer whose org membership is private is not skipped. Fix executes changed project code only through its sandboxed offline
 verifier. Confirm on the pilot runner that the verifier cannot reach the network,
 the OIDC request variables, or the federation token/cache. Confirm an unapproved
 workflow ref is denied in Claude Console authentication history. Write-capable
 publication runs on a separate runner without OIDC and consumes only the
 patch/report and metadata. Human review and required checks still govern merges.
 
-### gh-aw triage comparison
-
-[`ai-triage-gh-aw.md`](.github/workflows/ai-triage-gh-aw.md) implements the same
-triage task with Claude and the main-agent limits listed above. Unlike the
-direct-action version, its agent has read-only
-GitHub access; gh-aw publishes through built-in safe outputs with a fixed label
-allowlist and replacement of its older triage comment. No custom scripts are used.
-The source sets `roles: all`, allowing triage for human issue authors without
-repository write access, unlike the direct Claude Code Action workflow.
-
-The Markdown is the editable source. GitHub runs the generated
-[`ai-triage-gh-aw.lock.yml`](.github/workflows/ai-triage-gh-aw.lock.yml).
-Use gh-aw v0.93.5 to recompile source changes:
-
-```sh
-gh aw compile ai-triage-gh-aw
-```
-
-Commit both the Markdown source and regenerated lock workflow.
-`.github/aw/actions-lock.json` records the compiler's action pin;
-`.gitattributes` marks generated workflow files. Do not hand-edit the lock workflow.
-
-To compare in a pilot, replace the triage caller job above with this job rather
-than running both against the same issue:
-
-```yaml
-  Triage:
-    uses: avioconsulting/shared-workflows/.github/workflows/ai-triage-gh-aw.lock.yml@main
-    permissions:
-      actions: read
-      contents: read
-      issues: write
-      pull-requests: write
-    secrets:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-The `model` input is supported; there is no `enabled` or `triage-labels` input.
-To customize labels, update both the `safe-outputs.add-labels.allowed` list and
-the triage instructions in the Markdown source, then recompile. Keep operational
-and classification label meanings distinct. All additions are requested in one
-`add_labels` call, and one `add_comment` call submits the complete triage comment.
-
-The additional caller permissions accommodate gh-aw's generated status and
-safe-output jobs, not its read-only agent. Use `gh aw compile` for compiler
-validation. Older actionlint versions may not understand generated constructs
-such as `concurrency.queue` and `job.workflow_*`.
+For a Maven project with private dependencies, confirm the baseline warms them
+on a fresh runner and verification succeeds offline without JFrog credentials.
 
 ## Adding workflows to a new project
 
