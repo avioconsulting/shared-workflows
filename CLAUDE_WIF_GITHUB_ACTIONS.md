@@ -30,7 +30,7 @@ The workflows are called from consumer repos with `on: workflow_call`. The OIDC 
 
 | Workflow | `event_name` | `job_workflow_ref` | Actions variable |
 | --- | --- | --- | --- |
-| Triage | `issues` | `avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main` | `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID` |
+| Triage | `issues` or `issue_comment` (via `condition`) | `avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main` | `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID` |
 | Analyze | `issue_comment` | `avioconsulting/shared-workflows/.github/workflows/ai-analyze.yml@refs/heads/main` | `ANTHROPIC_ANALYZE_FEDERATION_RULE_ID` |
 | Fix | `issue_comment` | `avioconsulting/shared-workflows/.github/workflows/ai-fix.yml@refs/heads/main` | `ANTHROPIC_FIX_FEDERATION_RULE_ID` |
 
@@ -80,29 +80,36 @@ Controls which workflow runs may obtain a token. Single-repo example:
 
 The `sub` claim alone cannot distinguish Triage, Analyze, and Fix. Create a
 separate rule for each enabled workflow (up to three), and match its exact
-`job_workflow_ref` and `event_name`. The examples below show one approved
+`job_workflow_ref` and `event_name`. Triage runs on both `issues` (issue opened)
+and `issue_comment` (`@claude triage`). `match.claims` matches exactly one string
+value, so remove `event_name` from `claims` and allow both values in
+`match.condition`, a CEL expression over `claims` that must also pass. The examples below show one approved
 caller; constrain additional callers and their protected default branches
 explicitly rather than allowing the entire organization.
 
 **Triage rule** — `ANTHROPIC_TRIAGE_FEDERATION_RULE_ID`
 
+
 ```json
 {
-  "name": "gha-ai-triage",
-  "issuer_id": "fdis_...",
+  "name": "github-ai-triage",
+  "description": "AI Triage Workflow in GitHub Actions. When issues are created on AVIO Repos, this rule will match.",
+  "issuer_id": "fdis_01...",
+  "issuer_name": "github-actions",
   "match": {
-    "subject_prefix": "repo:avioconsulting/your-repo:ref:refs/heads/main",
-    "audience": "https://api.anthropic.com",
-    "claims": {
-      "repository_owner": "avioconsulting",
-      "repository": "avioconsulting/your-repo",
-      "ref": "refs/heads/main",
-      "job_workflow_ref": "avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@refs/heads/main",
-      "event_name": "issues"
-    }
+    "subject_prefix": null,
+    "audience": null,
+    "claims": null,
+    "condition": "claims.sub.startsWith(\"repo:avioconsulting/*\") && claims.repository_owner_id == 26659507 && claims.repository_owner == \"avioconsulting\" &&  \nclaims.refs == \"refs/heads/main\" && \nclaims.event_name in ['issues', 'issue_comment']"
   },
-  "target": { "type": "service_account", "service_account_id": "svac_triage..." },
-  "workspace_id": "wrkspc_...",
+  "attributes": null,
+  "target": {
+    "type": "service_account",
+    "service_account_id": "svac_01...",
+    "service_account_name": "github-ci-caller"
+  },
+  "workspace_id": "wrkspc_01...",
+  "applies_to_all_workspaces": false,
   "oauth_scope": "workspace:developer",
   "token_lifetime_seconds": 600
 }
@@ -114,23 +121,31 @@ the exact Analyze path from the table above.
 
 ```json
 {
-  "name": "gha-ai-fix",
-  "issuer_id": "fdis_...",
+  "name": "github-ai-assistant",
+  "description": "Used for Fix and Analyze workflows in GitHub Actions",
+  "issuer_id": "fdis_01...",
+  "issuer_name": "github-actions",
   "match": {
-    "subject_prefix": "repo:avioconsulting/your-repo:ref:refs/heads/main",
-    "audience": "https://api.anthropic.com",
+    "subject_prefix": "repo:avioconsulting/*",
+    "audience": null,
     "claims": {
+      "ref": "\"refs/heads/main\"",
+      "event_name": "issue_comment",
       "repository_owner": "avioconsulting",
-      "repository": "avioconsulting/your-repo",
-      "ref": "refs/heads/main",
-      "job_workflow_ref": "avioconsulting/shared-workflows/.github/workflows/ai-fix.yml@refs/heads/main",
-      "event_name": "issue_comment"
-    }
+      "repository_owner_id": "26659507"
+    },
+    "condition": null
   },
-  "target": { "type": "service_account", "service_account_id": "svac_fix..." },
-  "workspace_id": "wrkspc_...",
+  "attributes": null,
+  "target": {
+    "type": "service_account",
+    "service_account_id": "svac_01...",
+    "service_account_name": "github-ci-caller"
+  },
+  "workspace_id": "wrkspc_01...",
+  "applies_to_all_workspaces": false,
   "oauth_scope": "workspace:developer",
-  "token_lifetime_seconds": 1800
+  "token_lifetime_seconds": 600
 }
 ```
 
@@ -156,8 +171,9 @@ Store the IDs as repository or organization **variables** (not secrets):
 | `ANTHROPIC_FIX_FEDERATION_RULE_ID` | `fdrl_...` (Fix rule) |
 
 **Caller workflows must grant `id-token: write`.** A reusable workflow cannot
-get more permissions than its caller grants. Within Analyze and Fix, only the
-agent job requests OIDC; `Acknowledge` and `PublishFix` do not.
+get more permissions than its caller grants. In each workflow, only the agent job
+requests OIDC; `Gate`, `Publish`, `PublishFix`, and `ReportFailure`
+do not.
 
 Caller for triage:
 
@@ -165,7 +181,9 @@ Caller for triage:
 name: AI Issue Triage
 on:
   issues:
-    types: [opened, labeled]
+    types: [opened]
+  issue_comment:
+    types: [created]
 jobs:
   Triage:
     uses: avioconsulting/shared-workflows/.github/workflows/ai-triage.yml@main
@@ -174,7 +192,7 @@ jobs:
       issues: write
       id-token: write
     with:
-      triage-labels: bug,enhancement,question
+      classification-labels: bug,enhancement,question
 ```
 
 Use the separate [Analyze and Fix caller examples](README.md#setup). WIF does not require `secrets: inherit`.
