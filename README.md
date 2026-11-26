@@ -11,6 +11,7 @@ The Triage, Analyze, and Fix workflows use the official
 | `ai-triage.yml` | Issue opened by a user with write access, or a new issue comment starting with `@claude triage` from one | Labels and a concise triage comment |
 | `ai-analyze.yml` | New human-authored issue comment starting with `@claude analyze` | Analysis comment |
 | `ai-fix.yml` | New human-authored issue comment starting with `@claude fix` or `@claude implement` | Branch and draft PR, or an issue reply if blocked |
+| `ai-maintenance.yml` | Recommended entry point: issue opened or any new issue comment | Routes to the three workflows above |
 
 ### Setup
 
@@ -50,10 +51,148 @@ usage. GitHub Actions runner usage is accounted for separately.
 The shared repository must be accessible to the caller. The examples use `@main`;
 use the branch containing these workflows for a pilot, and a reviewed SHA for rollout.
 
-Create `.github/workflows/ai-triage.yml` in the framework repository:
+### Calling the workflows
+
+A calling repository uses **one** of two approaches:
+
+| | Option A: single entry point (recommended) | Option B: individual workflows |
+| --- | --- | --- |
+| Caller files | One, calling `ai-maintenance.yml` | One per workflow, calling `ai-triage.yml`, `ai-analyze.yml`, and/or `ai-fix.yml` |
+| Command names in the caller | Only in the optional, cosmetic [`run-name`](#run-titles-run-name) | Only in an optional, cosmetic `run-name` |
+| Runs per issue comment | One | One per caller; callers for other commands show as skipped |
+| Turning a workflow off | `enable-triage` / `enable-analyze` / `enable-fix: false` | Omit or disable that caller |
+| Model input | `triage-model`, `analyze-model`, `fix-model` | `claude-model` on each workflow |
+| Federation rules | Same for both: one rule per workflow, matching `ai-triage.yml`, `ai-analyze.yml`, or `ai-fix.yml` | |
+
+Do not combine the approaches for the same workflow in one repository. If both
+an entry-point caller and an individual caller handle the same command, the agent
+runs twice: two triage comments, or two fix runs competing for the same branch.
+Either way, each workflow's `Gate` job matches the exact command, filters on
+`author_association`, and checks write access, so routing in the caller never
+grants access on its own.
+
+#### Option A: single entry point
+
+Create a single `.github/workflows/ai-maintenance.yml` in the framework repository.
+It calls the shared [`ai-maintenance.yml`](.github/workflows/ai-maintenance.yml)
+entry point, which routes each event to Triage, Analyze, or Fix. Command routing
+and authorization live only in the shared workflows, and each opened issue or new
+comment creates one workflow run. (GitHub cannot filter `issue_comment` events by comment text,
+so separate callers would each start a skipped run for every comment.)
+
+```yaml
+name: AI Maintenance
+# Cosmetic run title; see "Run titles" below.
+run-name: >-
+  ${{
+    (github.event_name == 'issues' && format('triage #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude triage') && format('triage #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude analyze') && format('analyze #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude fix') && format('fix #{0}', github.event.issue.number)) ||
+    (startsWith(github.event.comment.body, '@claude implement') && format('implement #{0}', github.event.issue.number)) ||
+    format('comment #{0}', github.event.issue.number)
+  }}
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+jobs:
+  AI:
+    uses: avioconsulting/shared-workflows/.github/workflows/ai-maintenance.yml@main
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    with:
+      java-version: '17'
+      java-distribution: temurin
+```
+
+##### Run titles (`run-name`)
+
+**Why:** with one caller, every run in the Actions list would otherwise be titled
+`AI Maintenance`, and you would have to open each run to see whether it triaged,
+analyzed, or fixed an issue, or did nothing.
+
+**What it provides:** a readable title per run, derived from the event and the
+comment's command. It is purely cosmetic: it does not decide which job runs, and
+it grants nothing.
+
+| Event | Run title |
+| --- | --- |
+| Issue #42 opened | `triage #42` |
+| Comment `@claude triage` on #42 | `triage #42` |
+| Comment `@claude analyze why this fails` on #42 | `analyze #42` |
+| Comment `@claude fix` on #42 | `fix #42` |
+| Comment `@claude implement retries` on #42 | `implement #42` |
+| Any other comment on #42, such as `Thanks!` | `comment #42` (all jobs skipped) |
+
+**Why it must be in the calling repository:**
+
+- GitHub sets a run's title only from the `run-name` of the top-level (calling)
+  workflow. A called workflow's `run-name` is ignored, and no API renames a run
+  after it starts, so `ai-maintenance.yml` cannot set the title.
+- GitHub expressions have no split, substring, or replace function, so `run-name`
+  cannot extract "the second word" of a comment generically. Each command name
+  has to be listed with `startsWith`.
+- The full comment body is not used as a title because comments can be long and
+  multi-line.
+
+**What happens if commands change:** the shared workflows remain the source of
+truth. If a command is renamed or added there, callers keep working: routing,
+authorization, and the agent run are unaffected. Only the title is stale. An
+unlisted command is titled `comment #42`, and a renamed one may keep its old
+label, until the caller's `run-name` is updated. Because `startsWith` is looser
+than the real match, a comment such as `@claude fixed it` is titled `fix #42`
+even though no job runs.
+
+`run-name` is optional. Without it, runs are titled `AI Maintenance`; open a run
+to see which job ran (for example `AI / Analyze / Gate`). The same technique works
+for Option B callers.
+
+The caller grants the union of permissions the three workflows need. Each job
+inside the entry point, and each job inside Triage, Analyze, and Fix, declares
+its own narrower permissions, as listed under
+[Assistant commands and permissions](#assistant-commands-and-permissions).
+The entry point only routes events: each workflow's `Gate` job still matches the
+exact command, filters on `author_association`, and checks write access.
+
+Federation rules stay per workflow. A job's OIDC `job_workflow_ref` names the
+workflow file that defines the job, so the agent jobs should still present
+`ai-triage.yml`, `ai-analyze.yml`, or `ai-fix.yml`, not `ai-maintenance.yml`.
+Confirm this in the token claims (Console authentication history) on the first
+run through the entry point.
+
+`ai-maintenance.yml` inputs (all optional):
+
+| Input | Default | Purpose |
+| --- | --- | --- |
+| `enable-triage`, `enable-analyze`, `enable-fix` | `true` | Turn a workflow off for this repository |
+| `triage-model` / `analyze-model` / `fix-model` | `claude-haiku-5-5` / `claude-sonnet-5-5` / `claude-sonnet-5-5` | Claude model per workflow |
+| `classification-labels`, `info-label`, `triaged-label` | `bug,enhancement,question`, `need information`, `ai-triaged` | Triage labels |
+| `java-version`, `java-distribution` | `8`, `temurin` | JDK for Fix |
+| `claude-show-full-output` | `false` | Print the full agent transcript; also requires debug logging |
+
+It also accepts the optional `JFROG_USER` and `JFROG_PASSWORD` secrets and passes
+them only to Fix.
+
+#### Option B: individual workflows
+
+Create a caller only for each workflow you want. Each workflow checks its own
+command, so callers need no command conditions. Every caller starts a run for
+every new issue comment; runs for other commands finish as skipped. The optional
+`run-name` labels those runs.
+
+`.github/workflows/ai-triage.yml`:
 
 ```yaml
 name: AI Issue Triage
+run-name: >-
+  ${{ github.event_name == 'issues'
+      && format('Triage #{0}', github.event.issue.number)
+      || format('Triage check #{0}', github.event.issue.number) }}
 on:
   issues:
     types: [opened]
@@ -70,7 +209,7 @@ jobs:
       classification-labels: bug,enhancement,question
 ```
 
-Create `.github/workflows/ai-analyze.yml` in the framework repository:
+`.github/workflows/ai-analyze.yml`:
 
 ```yaml
 name: AI Maintenance Analyze
@@ -86,7 +225,7 @@ jobs:
       id-token: write
 ```
 
-To enable fixes, create `.github/workflows/ai-fix.yml` separately:
+`.github/workflows/ai-fix.yml`:
 
 ```yaml
 name: AI Maintenance Fix
@@ -106,16 +245,23 @@ jobs:
       java-distribution: temurin
 ```
 
+Each individual workflow accepts `claude-model` and `claude-show-full-output`;
+Triage also accepts `classification-labels`, `info-label`, and `triaged-label`,
+and Fix accepts `java-version`, `java-distribution`, and the JFrog secrets.
+
+#### Common settings
+
 Fix defaults to Temurin Java 8. Set `java-version` to the version your project
 requires; the default-branch baseline and offline verification use the same JDK.
 
-You can enable Analyze or Fix independently. The old `ai-assistant.yml` entry
-point is removed in this revision. Before rolling out the shared-workflow
-change, identify callers of that path (including `@main` callers), configure
-federation for the new paths, and coordinate the caller updates.
+The older combined `ai-assistant.yml` (replaced by `ai-maintenance.yml`) is removed in this revision. Before
+rolling out the shared-workflow change, identify callers of that path (including
+`@main` callers), configure federation for the new paths, and coordinate the
+caller updates.
 
 If the default-branch Maven build needs private dependencies, explicitly map a
-read-only JFrog credential pair under the `Fix` caller job. The names on the
+read-only JFrog credential pair under the caller job that runs Fix (`AI` in
+Option A, `Fix` in Option B). The names on the
 right are examples; use your repository's actual secret names. Do not use
 `secrets: inherit`.
 
@@ -134,8 +280,9 @@ resolved credentials to files on the runner.
 
 ### Inputs and execution limits
 
-These workflows accept an optional `claude-model` input. Triage defaults to
-`claude-haiku-5-5`; Analyze and Fix default to `claude-sonnet-5-5`.
+The individual workflows accept an optional `claude-model` input; through the
+entry point, use `triage-model`, `analyze-model`, or `fix-model`. Triage defaults
+to `claude-haiku-5-5`; Analyze and Fix default to `claude-sonnet-5-5`.
 To debug a run, set `claude-show-full-output: true` in the calling job's `with:`
 block and run the workflow with debug enabled. This optional boolean defaults to `false`. Full output includes tool
 results, which may contain sensitive data.
@@ -147,6 +294,7 @@ Callers that override `model` must rename that input to `claude-model`.
 | `ai-triage.yml` | `classification-labels` (default `bug,enhancement,question`), `info-label` (default `need information`), `triaged-label` (default `ai-triaged`) | 12 | $1 | Gate: 5 minutes; Triage: 10 minutes; Publish: 5 minutes |
 | `ai-analyze.yml` | None | 20 | $3 | Gate: 5 minutes; Analyze: 20 minutes |
 | `ai-fix.yml` | `java-version` (default `8`), `java-distribution` (default `temurin`) | 30 | $6 | Gate: 5 minutes; Fix: 60 minutes; publication: 10 minutes |
+| `ai-maintenance.yml` | See [Option A](#option-a-single-entry-point) | Per routed workflow | Per routed workflow | Per routed workflow |
 
 `classification-labels` lists the labels the agent may choose as a classification.
 `info-label` and `triaged-label` are operational labels managed by the workflow;
